@@ -401,10 +401,6 @@ logger.exception("异常信息")
 - 日志记录系统
 - 环境变量配置
 
-## 开发者信息
-
-开发者：林溪
-
 ## 版权说明
 
 Copyright © 2026 Heart Garden Team. All rights reserved.
