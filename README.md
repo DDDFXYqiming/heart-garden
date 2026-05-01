@@ -193,6 +193,11 @@ npm run dev
 - LLM provider 缓存改为 OrderedDict LRU，最多保留 10 个
 - 正常操作日志 info → debug
 
+### ✅ v3.0 - 架构重构
+- main.py 1468行 → 27行精简入口
+- Flask factory pattern (create_app)
+- 模块化拆分：db.py / auth.py / 9个路由模块
+
 ## API 接口
 
 详见 [SPEC.md](./SPEC.md) 中的 API 接口一览部分。
