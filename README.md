@@ -14,7 +14,6 @@ Heart Garden 是一个基于 AI 驱动的情感陪伴应用，为用户提供深
 - **状态管理**: Pinia
 - **HTTP 客户端**: Axios
 - **样式方案**: Tailwind CSS 3
-- **图表**: Chart.js + vue-chartjs
 - **设计风格**: 手绘风格 (Hand-Drawn Design)
 
 ### 后端技术栈
@@ -24,6 +23,7 @@ Heart Garden 是一个基于 AI 驱动的情感陪伴应用，为用户提供深
 - **数据库**: SQLite
 - **配置管理**: python-dotenv 1.0.0
 - **JWT 认证**: PyJWT 2.8.0
+- **频率限制**: flask-limiter 3.10.1
 - **LLM 集成**: OpenAI SDK (兼容模式)
 
 ### 服务模块
@@ -46,6 +46,9 @@ Heart Garden 是一个基于 AI 驱动的情感陪伴应用，为用户提供深
 5. **Prompt 引擎** (prompt_engine.py)
    - 将规则引擎逻辑转化为 LLM 系统提示词
    - 支持个性化配置和情绪上下文注入
+
+6. **共享常量** (constants.py)
+   - 模板词库、表情映射、情绪关键词
 
 ## 核心功能
 
@@ -154,6 +157,24 @@ npm run dev
 - **配置持久化**：用户配置保存到数据库
 - **连接测试**：一键验证 LLM 配置可用性
 - **对话来源标识**：聊天界面显示 AI / 规则标签
+
+### ✅ v2.3 - 安全修复
+- DEV_MODE 改为环境变量控制，默认关闭认证跳过
+- JWT_SECRET 移除硬编码 fallback，启动时必须配置
+- 错误详情仅在开发模式返回，生产环境隐藏内部信息
+- SQL 表名迁移增加白名单校验
+
+### ✅ v2.4 - 代码重构
+- Auth 接口增加频率限制（注册/登录每 IP 每分钟 5 次）
+- 提取 _analyze_with_custom_words() 辅助函数，消除 4 处重复
+- 创建 services/constants.py 共享常量，消除模板/表情字典重复
+- 移除 20+ 个冗余 try/except（全局 error handler 已兜底）
+- 删除 chart.js + vue-chartjs 未使用依赖（~150KB）
+
+### 🔄 v2.5 - 功能修复与性能优化 (开发中)
+- 修复 AI 陪伴对话历史丢失问题（刷新/切页后对话清空）
+- SQL 查询优化（N+1 修复、stats 合并查询）
+- 前端 LLM 超时调整
 
 ## API 接口
 

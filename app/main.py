@@ -12,6 +12,9 @@ import sqlite3
 from datetime import datetime, timedelta
 import os
 import logging
+from dotenv import load_dotenv
+
+load_dotenv()
 from logging.handlers import RotatingFileHandler
 import uuid
 from functools import wraps

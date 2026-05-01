@@ -5,7 +5,7 @@ echo ========================================
 echo    HeartGarden - Starting Services
 echo ========================================
 echo.
-echo [1/3] Checking Python...
+echo [1/5] Checking Python...
 python --version >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] Python not found
@@ -14,7 +14,7 @@ if errorlevel 1 (
 )
 echo [OK] Python found
 echo.
-echo [2/3] Checking Node.js...
+echo [2/5] Checking Node.js...
 node --version >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] Node.js not found
@@ -23,21 +23,37 @@ if errorlevel 1 (
 )
 echo [OK] Node.js found
 echo.
-echo [3/3] Preparing environment...
+echo [3/5] Preparing environment...
 if not exist "venv" (
     echo Creating virtual environment...
     python -m venv venv
-    echo Installing Python dependencies...
-    call venv\Scripts\activate.bat
-    pip install -r requirements.txt
-) else (
-    call venv\Scripts\activate.bat
 )
+call venv\Scripts\activate.bat
+echo Ensuring Python dependencies...
+pip install -r requirements.txt -q
+echo.
+echo [4/5] Verifying Python dependencies...
+python -c "import flask, flask_cors, flask_limiter, openai, jwt" 2>nul
+if errorlevel 1 (
+    echo [ERROR] Missing Python packages. Attempting reinstall...
+    pip install -r requirements.txt
+    python -c "import flask, flask_cors, flask_limiter, openai, jwt"
+    if errorlevel 1 (
+        echo [ERROR] Failed to install dependencies. Please check requirements.txt
+        pause
+        exit /b 1
+    )
+)
+echo [OK] Python dependencies verified
+echo.
+echo [5/5] Checking frontend dependencies...
 if not exist "frontend\node_modules" (
     echo Installing frontend dependencies...
     cd frontend
     npm install
     cd..
+) else (
+    echo [OK] Frontend dependencies found
 )
 echo.
 echo ========================================
@@ -57,5 +73,10 @@ echo    Opening Browser...
 echo ========================================
 start http://localhost:3000
 echo.
-echo All services started!
+echo ========================================
+echo    All services started!
+echo    Backend:  http://localhost:5000
+echo    Frontend: http://localhost:3000
+echo ========================================
+echo.
 echo.
