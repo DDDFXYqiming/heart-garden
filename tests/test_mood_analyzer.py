@@ -53,6 +53,17 @@ class TestMoodAnalyzer:
         result = self.analyzer.analyze("开心快乐幸福美好")
         assert 20 <= result['mood_score'] <= 80
 
+    def test_colloquial_positive_chat_text(self):
+        result = self.analyzer.analyze("太好了太开心了，今天完成了很多项目！！！")
+        assert result['mood_label'] == '开心'
+        assert result['mood_score'] >= 75
+        assert result['positive_count'] >= 2
+
+    def test_good_weather_positive_text(self):
+        result = self.analyzer.analyze("今天天气真好呀")
+        assert result['mood_label'] == '开心'
+        assert result['mood_score'] >= 75
+
     def test_trend_detection(self):
         result = self.analyzer.analyze("开心快乐幸福美好希望期待")
         assert result['trend'] in ('上升', '平稳')

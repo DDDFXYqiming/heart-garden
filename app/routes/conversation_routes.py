@@ -120,6 +120,8 @@ def delete_conversation(conversation_id):
         }), 404
 
     execute_db('DELETE FROM chat_history WHERE conversation_id = ?', (conversation_id,))
+    execute_db('DELETE FROM mood_records WHERE source_type = ? AND source_id = ? AND user_id = ?',
+              ('chat', conversation_id, g.current_user_id))
     execute_db('DELETE FROM conversations WHERE id = ? AND user_id = ?',
               (conversation_id, g.current_user_id))
 

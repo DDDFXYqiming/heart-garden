@@ -7,6 +7,7 @@ from datetime import datetime
 from flask import Blueprint, request, jsonify, g, current_app
 from ..db import query_db, execute_db
 from ..auth import require_auth, _analyze_with_custom_words
+from ..mood_records import record_mood
 from .. import logger
 
 diary_bp = Blueprint('diary', __name__)
@@ -43,11 +44,13 @@ def create_diary():
     ''', (diary_id, g.current_user_id, title, content, mood_result['mood_score'],
           mood_result['mood_label'], str(tags) if tags else None, ai_analysis))
 
-    execute_db('''
-    INSERT INTO mood_records (id, diary_id, user_id, mood_score, mood_label, keywords, trend)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (diary_id, diary_id, g.current_user_id, mood_result['mood_score'],
-          mood_result['mood_label'], str(mood_result['keywords']), mood_result['trend']))
+    record_mood(
+        g.current_user_id,
+        mood_result,
+        source_type='diary',
+        source_id=diary_id,
+        diary_id=diary_id,
+    )
 
     logger.info(f"Diary created: {diary_id}, mood: {mood_result['mood_label']}, user: {g.current_user_id}")
     return jsonify({

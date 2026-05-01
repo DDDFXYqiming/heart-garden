@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify, g, current_app
 from ..db import query_db, execute_db
-from ..auth import require_auth, _analyze_with_custom_words
+from ..auth import require_auth, _analyze_with_custom_words, CUSTOM_WORDS_ENABLED
 from .. import logger
 
 mood_bp = Blueprint('mood', __name__)
@@ -89,6 +89,13 @@ def get_mood_distribution():
 @mood_bp.route('/api/mood/words', methods=['GET'])
 @require_auth
 def get_custom_words():
+    if not CUSTOM_WORDS_ENABLED:
+        return jsonify({
+            'success': True,
+            'data': [],
+            'feature_enabled': False
+        })
+
     rows = query_db('''
     SELECT id, word, category, word_type, created_at
     FROM custom_words
@@ -114,6 +121,12 @@ def get_custom_words():
 @mood_bp.route('/api/mood/words', methods=['POST'])
 @require_auth
 def add_custom_word():
+    if not CUSTOM_WORDS_ENABLED:
+        return jsonify({
+            'success': False,
+            'error': {'code': 403, 'message': '自定义情绪词库暂未启用'}
+        }), 403
+
     data = request.json
     word = data.get('word', '').strip()
     category = data.get('category', '自定义')
@@ -164,6 +177,12 @@ def add_custom_word():
 @mood_bp.route('/api/mood/words/<word_id>', methods=['DELETE'])
 @require_auth
 def delete_custom_word(word_id):
+    if not CUSTOM_WORDS_ENABLED:
+        return jsonify({
+            'success': False,
+            'error': {'code': 403, 'message': '自定义情绪词库暂未启用'}
+        }), 403
+
     existing = query_db(
         'SELECT id, word FROM custom_words WHERE id = ? AND user_id = ?',
         (word_id, g.current_user_id), one=True

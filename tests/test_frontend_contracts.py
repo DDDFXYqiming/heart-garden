@@ -47,3 +47,17 @@ def test_settings_page_does_not_bind_masked_api_key_to_submit_payload():
     assert "apiKeyInput.value.trim()" in script
     assert "payload.api_key = key" in script
     assert "const { api_key, api_key_saved, api_key_preview, ...safeConfig }" in script
+
+
+def test_settings_page_custom_mood_dictionary_temporarily_disabled():
+    """设置页暂时不能展示或调用自定义情绪词库功能。"""
+    source = SETTINGS_PAGE.read_text(encoding="utf-8")
+    script = _script_setup(source)
+
+    assert "自定义情绪词库暂时关闭" in source
+    assert "getCustomWords" not in script
+    assert "addCustomWord" not in script
+    assert "deleteCustomWord" not in script
+    assert "fetchWords" not in script
+    assert "handleAdd" not in script
+    assert "handleDelete" not in script

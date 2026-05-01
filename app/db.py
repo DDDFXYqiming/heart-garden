@@ -79,6 +79,8 @@ def init_db():
             mood_label TEXT,
             keywords TEXT,
             trend TEXT,
+            source_type TEXT DEFAULT 'diary',
+            source_id TEXT,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (diary_id) REFERENCES diaries(id)
         )
@@ -123,6 +125,8 @@ def init_db():
         for table, column, col_def in [
             ('diaries', 'user_id', 'TEXT'),
             ('mood_records', 'user_id', 'TEXT'),
+            ('mood_records', 'source_type', "TEXT DEFAULT 'diary'"),
+            ('mood_records', 'source_id', 'TEXT'),
             ('users', 'llm_config', 'TEXT')
         ]:
             if table not in _ALLOWED_TABLES:
@@ -143,6 +147,9 @@ def init_db():
         ''')
         cursor.execute('''
         CREATE INDEX IF NOT EXISTS idx_mood_records_timestamp ON mood_records(timestamp)
+        ''')
+        cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_mood_records_source ON mood_records(source_type, source_id)
         ''')
         cursor.execute('''
         CREATE INDEX IF NOT EXISTS idx_chat_history_conversation ON chat_history(conversation_id)

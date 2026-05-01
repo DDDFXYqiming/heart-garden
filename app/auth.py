@@ -9,6 +9,8 @@ from flask import g, request, current_app, jsonify
 
 from . import DEV_MODE, logger
 
+CUSTOM_WORDS_ENABLED = False
+
 
 def create_token(user_id):
     payload = {
@@ -59,9 +61,12 @@ def _error_details(msg: str) -> str | None:
 
 
 def _analyze_with_custom_words(user_id, text):
-    """Query custom_words from DB and analyze text with them."""
+    """Analyze text; custom word dictionaries are temporarily disabled."""
     from .db import query_db
     mood_analyzer = current_app.mood_analyzer
+    if not CUSTOM_WORDS_ENABLED:
+        return mood_analyzer.analyze(text)
+
     rows = query_db(
         'SELECT word, word_type FROM custom_words WHERE user_id = ?',
         (user_id,)

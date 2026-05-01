@@ -8,11 +8,42 @@ import time
 from flask import Blueprint, request, jsonify, g, current_app, stream_with_context
 from ..db import query_db, execute_db
 from ..auth import require_auth, _analyze_with_custom_words
+from ..mood_records import record_mood
 from services.llm_service import parse_llm_config
 from services.prompt_engine import MoodContext
 from .. import logger
 
 chat_bp = Blueprint('chat', __name__)
+
+
+def _load_user_llm_config(user_id: str) -> dict:
+    user_row = query_db(
+        'SELECT llm_config FROM users WHERE id = ?',
+        (user_id,), one=True
+    )
+    return parse_llm_config(user_row['llm_config'] if user_row else None)
+
+
+def _analyze_chat_mood(user_id: str, user_message: str, user_llm_config: dict) -> tuple[dict, str, bool]:
+    """Analyze chat mood: LLM first when configured, rule analyzer as fallback."""
+    llm_service = current_app.llm_service
+    llm_configured = llm_service.is_llm_configured(user_llm_config)
+    if llm_configured:
+        llm_success, llm_mood, error = llm_service.analyze_mood(
+            user_message,
+            user_config=user_llm_config,
+        )
+        if llm_success and llm_mood:
+            llm_mood['analysis_source'] = 'llm'
+            return llm_mood, 'llm', True
+        logger.warning(
+            "chat mood LLM failed fallback=rule_engine error=%s",
+            error or "unknown",
+        )
+
+    mood_result = _analyze_with_custom_words(user_id, user_message)
+    mood_result['analysis_source'] = 'rule_engine'
+    return mood_result, 'rule_engine', llm_configured
 
 
 @chat_bp.route('/api/chat', methods=['POST'])
@@ -59,14 +90,17 @@ def chat():
 
     history_list = [{'role': h['role'], 'content': h['content']} for h in history]
 
-    mood_result = _analyze_with_custom_words(g.current_user_id, user_message)
-
-    user_row = query_db(
-        'SELECT llm_config FROM users WHERE id = ?',
-        (g.current_user_id,), one=True
+    user_llm_config = _load_user_llm_config(g.current_user_id)
+    mood_result, mood_source, llm_configured = _analyze_chat_mood(
+        g.current_user_id,
+        user_message,
+        user_llm_config,
     )
-    user_llm_config = parse_llm_config(
-        user_row['llm_config'] if user_row else None
+    record_mood(
+        g.current_user_id,
+        mood_result,
+        source_type='chat',
+        source_id=conversation_id,
     )
 
     response_mode = "rule_engine"
@@ -74,13 +108,13 @@ def chat():
 
     llm_service = current_app.llm_service
     ai_companion = current_app.ai_companion
-    llm_configured = llm_service.is_llm_configured(user_llm_config)
     logger.info(
-        "chat request conv=%s chars=%s history=%s mood=%s llm_configured=%s",
+        "chat request conv=%s chars=%s history=%s mood=%s mood_source=%s llm_configured=%s",
         conversation_id,
         len(user_message),
         len(history_list),
         mood_result['mood_label'],
+        mood_source,
         llm_configured
     )
 
@@ -149,6 +183,7 @@ def chat():
             'response': response,
             'conversation_id': conversation_id,
             'mood': mood_result['mood_label'],
+            'mood_source': mood_source,
             'sentiment': 'positive' if mood_result['mood_score'] >= 60 else 'negative' if mood_result['mood_score'] < 40 else 'neutral',
             'response_mode': response_mode
         }
@@ -197,26 +232,29 @@ def chat_stream():
     ''', (conversation_id,))
     history_list = [{'role': h['role'], 'content': h['content']} for h in history]
 
-    mood_result = _analyze_with_custom_words(g.current_user_id, user_message)
-
-    user_row = query_db(
-        'SELECT llm_config FROM users WHERE id = ?',
-        (g.current_user_id,), one=True
+    user_llm_config = _load_user_llm_config(g.current_user_id)
+    mood_result, mood_source, llm_configured = _analyze_chat_mood(
+        g.current_user_id,
+        user_message,
+        user_llm_config,
     )
-    user_llm_config = parse_llm_config(
-        user_row['llm_config'] if user_row else None
+    record_mood(
+        g.current_user_id,
+        mood_result,
+        source_type='chat',
+        source_id=conversation_id,
     )
 
     llm_service = current_app.llm_service
     ai_companion = current_app.ai_companion
     current_user_id = g.current_user_id
-    llm_configured = llm_service.is_llm_configured(user_llm_config)
     logger.info(
-        "chat_stream request conv=%s chars=%s history=%s mood=%s llm_configured=%s",
+        "chat_stream request conv=%s chars=%s history=%s mood=%s mood_source=%s llm_configured=%s",
         conversation_id,
         len(user_message),
         len(history_list),
         mood_result['mood_label'],
+        mood_source,
         llm_configured
     )
 
@@ -285,6 +323,7 @@ def chat_stream():
             'type': 'done',
             'conversation_id': conversation_id,
             'mood': mood_result['mood_label'],
+            'mood_source': mood_source,
             'response_mode': response_mode
         }
         logger.info(

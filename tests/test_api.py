@@ -221,6 +221,21 @@ class TestMoodAPI:
         assert 'mood_score' in data['data']
         assert 'mood_label' in data['data']
 
+    def test_custom_words_temporarily_disabled(self):
+        get_resp = self.client.get('/api/mood/words', headers=self._auth())
+        get_data = json.loads(get_resp.data)
+        assert get_resp.status_code == 200
+        assert get_data['success'] is True
+        assert get_data['data'] == []
+        assert get_data['feature_enabled'] is False
+
+        post_resp = self.client.post('/api/mood/words', json={
+            'word': '超开心', 'category': '自定义', 'word_type': 'positive'
+        }, headers=self._auth())
+        post_data = json.loads(post_resp.data)
+        assert post_resp.status_code == 403
+        assert post_data['success'] is False
+
 
 class TestConversationAPI:
     def setup_method(self):
@@ -239,6 +254,16 @@ class TestConversationAPI:
     def _auth(self):
         return {'Authorization': f'Bearer {self.token}'}
 
+    def _enable_llm_config(self):
+        resp = self.client.post('/api/llm/config', json={
+            'enabled': True,
+            'base_url': 'https://api.deepseek.com/v1',
+            'api_key': 'unit-test-chat-llm-key',
+            'model': 'deepseek-chat',
+            'temperature': 0.7
+        }, headers=self._auth())
+        assert resp.status_code == 200
+
     def test_conversations_list_empty(self):
         resp = self.client.get('/api/conversations', headers=self._auth())
         data = json.loads(resp.data)
@@ -255,6 +280,139 @@ class TestConversationAPI:
         assert data['success'] is True
         assert 'conversation_id' in data['data']
         assert data['data']['response']
+
+    def test_chat_positive_message_records_mood_stats(self):
+        resp = self.client.post('/api/chat', json={
+            'message': '太好了太开心了，今天完成了很多项目！！！'
+        }, headers=self._auth())
+        data = json.loads(resp.data)
+        assert resp.status_code == 200
+        assert data['success'] is True
+        assert data['data']['mood'] == '开心'
+
+        trend_resp = self.client.get('/api/mood/trend?days=7', headers=self._auth())
+        trend_data = json.loads(trend_resp.data)
+        assert trend_resp.status_code == 200
+        assert any(r['label'] == '开心' and r['score'] >= 75 for r in trend_data['data'])
+
+        dist_resp = self.client.get('/api/mood/distribution?days=7', headers=self._auth())
+        dist_data = json.loads(dist_resp.data)
+        assert dist_resp.status_code == 200
+        assert dist_data['data']['开心'] >= 1
+
+    def test_chat_stream_positive_message_records_mood_stats(self):
+        resp = self.client.post('/api/chat/stream', json={
+            'message': '今天天气真好呀'
+        }, headers=self._auth(), buffered=True)
+        body = resp.data.decode('utf-8')
+        assert resp.status_code == 200
+        assert '"type": "done"' in body
+        assert '"mood": "开心"' in body
+
+        dist_resp = self.client.get('/api/mood/distribution?days=7', headers=self._auth())
+        dist_data = json.loads(dist_resp.data)
+        assert dist_resp.status_code == 200
+        assert dist_data['data']['开心'] >= 1
+
+    def test_chat_uses_llm_mood_when_configured(self, monkeypatch):
+        self._enable_llm_config()
+        captured = {}
+
+        def fake_analyze_mood(message, user_config=None):
+            captured['message'] = message
+            captured['api_key_set'] = bool((user_config or {}).get('api_key'))
+            return True, {
+                'mood_score': 92.0,
+                'mood_label': '开心',
+                'keywords': ['完成项目', '开心'],
+                'trend': '上升',
+                'positive_count': 0,
+                'negative_count': 0,
+                'analysis_source': 'llm'
+            }, None
+
+        def fake_chat_with_fallback(**kwargs):
+            return True, 'LLM 陪伴回复', 'llm'
+
+        monkeypatch.setattr(app.llm_service, 'analyze_mood', fake_analyze_mood)
+        monkeypatch.setattr(app.llm_service, 'chat_with_fallback', fake_chat_with_fallback)
+
+        resp = self.client.post('/api/chat', json={
+            'message': '今天终于把复杂项目推进完了'
+        }, headers=self._auth())
+        data = json.loads(resp.data)
+
+        assert resp.status_code == 200
+        assert data['success'] is True
+        assert data['data']['mood'] == '开心'
+        assert data['data']['mood_source'] == 'llm'
+        assert data['data']['response_mode'] == 'llm'
+        assert captured['message'] == '今天终于把复杂项目推进完了'
+        assert captured['api_key_set'] is True
+
+        dist_resp = self.client.get('/api/mood/distribution?days=7', headers=self._auth())
+        dist_data = json.loads(dist_resp.data)
+        assert dist_resp.status_code == 200
+        assert dist_data['data']['开心'] >= 1
+
+    def test_chat_falls_back_to_rule_mood_when_llm_mood_fails(self, monkeypatch):
+        self._enable_llm_config()
+
+        def fake_analyze_mood(message, user_config=None):
+            return False, None, 'invalid_json'
+
+        def fake_chat_with_fallback(**kwargs):
+            return True, 'LLM 陪伴回复', 'llm'
+
+        monkeypatch.setattr(app.llm_service, 'analyze_mood', fake_analyze_mood)
+        monkeypatch.setattr(app.llm_service, 'chat_with_fallback', fake_chat_with_fallback)
+
+        resp = self.client.post('/api/chat', json={
+            'message': '太好了太开心了，今天完成了很多项目！！！'
+        }, headers=self._auth())
+        data = json.loads(resp.data)
+
+        assert resp.status_code == 200
+        assert data['success'] is True
+        assert data['data']['mood'] == '开心'
+        assert data['data']['mood_source'] == 'rule_engine'
+        assert data['data']['response_mode'] == 'llm'
+
+    def test_chat_stream_uses_llm_mood_when_configured(self, monkeypatch):
+        self._enable_llm_config()
+
+        def fake_analyze_mood(message, user_config=None):
+            return True, {
+                'mood_score': 33.0,
+                'mood_label': '焦虑',
+                'keywords': ['压力', '担心'],
+                'trend': '下降',
+                'positive_count': 0,
+                'negative_count': 0,
+                'analysis_source': 'llm'
+            }, None
+
+        def fake_chat_stream(**kwargs):
+            yield '我在，慢慢说。'
+
+        monkeypatch.setattr(app.llm_service, 'analyze_mood', fake_analyze_mood)
+        monkeypatch.setattr(app.llm_service, 'chat_stream', fake_chat_stream)
+
+        resp = self.client.post('/api/chat/stream', json={
+            'message': '这个项目让我有点担心'
+        }, headers=self._auth(), buffered=True)
+        body = resp.data.decode('utf-8')
+
+        assert resp.status_code == 200
+        assert '"type": "done"' in body
+        assert '"mood": "焦虑"' in body
+        assert '"mood_source": "llm"' in body
+        assert '"response_mode": "llm"' in body
+
+        dist_resp = self.client.get('/api/mood/distribution?days=7', headers=self._auth())
+        dist_data = json.loads(dist_resp.data)
+        assert dist_resp.status_code == 200
+        assert dist_data['data']['焦虑'] >= 1
 
     def test_conversation_detail(self):
         chat_resp = self.client.post('/api/chat', json={
