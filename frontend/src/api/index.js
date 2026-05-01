@@ -103,4 +103,16 @@ export function deleteCustomWord(id) {
   return api.delete(`/mood/words/${id}`)
 }
 
+export function getLLMConfig() {
+  return api.get('/llm/config')
+}
+
+export function saveLLMConfig(config) {
+  return api.post('/llm/config', config)
+}
+
+export function testLLMConnection(config) {
+  return api.post('/llm/test', config)
+}
+
 export default api

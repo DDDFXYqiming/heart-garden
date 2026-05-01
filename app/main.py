@@ -17,6 +17,8 @@ import uuid
 from functools import wraps
 from services.mood_analyzer import MoodAnalyzer
 from services.ai_companion import AICompanion
+from services.llm_service import LLMService, parse_llm_config, serialize_llm_config
+from services.prompt_engine import MoodContext
 
 # ==================== 日志配置 ====================
 def setup_logging():
@@ -51,15 +53,18 @@ CORS(app)
 
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-here')
 app.config['DATABASE'] = os.getenv('DATABASE_PATH', 'heart_garden.db')
-app.config['JWT_SECRET'] = os.getenv('JWT_SECRET', 'heart-garden-jwt-secret-2026')
+app.config['JWT_SECRET'] = os.environ.get('JWT_SECRET')
+if not app.config['JWT_SECRET']:
+    raise ValueError("JWT_SECRET 环境变量未设置！请设置一个安全的随机字符串。")
 app.config['JWT_EXPIRATION_HOURS'] = 168
 
-# 开发模式：设置为 True 时不需要 token 即可访问所有接口
-# 设为 False 后恢复 JWT 认证，需要登录获取 token
-DEV_MODE = True
+# 开发模式：仅当显式设置 DEV_MODE=true 时启用
+# 开启后不需要 token 即可访问所有接口
+DEV_MODE = os.getenv('DEV_MODE', '').lower() in ('1', 'true', 'yes')
 
 mood_analyzer = MoodAnalyzer()
 ai_companion = AICompanion()
+llm_service = LLMService()
 
 # ==================== 数据库工具 ====================
 def get_db():
@@ -131,13 +136,19 @@ def require_auth(f):
         }), 401
     return decorated
 
+def _error_details(msg: str) -> str | None:
+    """Return detailed error info only in debug/dev mode."""
+    return msg if app.debug or DEV_MODE else None
+
+
 # ==================== 统一错误处理 ====================
 @app.errorhandler(400)
 def bad_request(error):
     logger.warning(f"Bad request: {error}")
     return jsonify({
         'success': False,
-        'error': {'code': 400, 'message': '请求参数错误', 'details': str(error)}
+        'error': {'code': 400, 'message': '请求参数错误',
+                  'details': _error_details(str(error))}
     }), 400
 
 @app.errorhandler(404)
@@ -145,7 +156,8 @@ def not_found(error):
     logger.warning(f"Not found: {error}")
     return jsonify({
         'success': False,
-        'error': {'code': 404, 'message': '资源不存在', 'details': str(error)}
+        'error': {'code': 404, 'message': '资源不存在',
+                  'details': _error_details(str(error))}
     }), 404
 
 @app.errorhandler(401)
@@ -160,7 +172,8 @@ def internal_error(error):
     logger.error(f"Internal error: {error}", exc_info=True)
     return jsonify({
         'success': False,
-        'error': {'code': 500, 'message': '服务器内部错误', 'details': '请稍后重试'}
+        'error': {'code': 500, 'message': '服务器内部错误',
+                  'details': _error_details('请稍后重试')}
     }), 500
 
 @app.errorhandler(Exception)
@@ -168,7 +181,8 @@ def handle_exception(error):
     logger.exception(f"Unhandled exception: {error}")
     return jsonify({
         'success': False,
-        'error': {'code': 500, 'message': '服务器内部错误', 'details': str(error)}
+        'error': {'code': 500, 'message': '服务器内部错误',
+                  'details': _error_details(str(error))}
     }), 500
 
 # ==================== 数据库初始化 ====================
@@ -250,10 +264,14 @@ def init_db():
         )
         ''')
 
+        _ALLOWED_TABLES = {'diaries', 'mood_records', 'users'}
         for table, column, col_def in [
             ('diaries', 'user_id', 'TEXT'),
-            ('mood_records', 'user_id', 'TEXT')
+            ('mood_records', 'user_id', 'TEXT'),
+            ('users', 'llm_config', 'TEXT')
         ]:
+            if table not in _ALLOWED_TABLES:
+                raise ValueError(f"禁止迁移未知表: {table}")
             try:
                 cursor.execute(f'ALTER TABLE {table} ADD COLUMN {column} {col_def}')
             except sqlite3.OperationalError:
@@ -442,6 +460,89 @@ def get_current_user():
         })
     except Exception as e:
         logger.error(f"Get current user failed: {e}")
+        raise
+
+# ==================== LLM 配置 API ====================
+@app.route('/api/llm/config', methods=['GET'])
+@require_auth
+def get_llm_config():
+    try:
+        user = query_db(
+            'SELECT llm_config FROM users WHERE id = ?',
+            (g.current_user_id,), one=True
+        )
+        config = parse_llm_config(user['llm_config'] if user else None)
+        safe_config = dict(config)
+        if safe_config.get('api_key'):
+            key = safe_config['api_key']
+            safe_config['api_key'] = key[:8] + '****' if len(key) > 8 else '****'
+        return jsonify({'success': True, 'data': safe_config})
+    except Exception as e:
+        logger.error(f"Get LLM config failed: {e}")
+        raise
+
+@app.route('/api/llm/config', methods=['POST'])
+@require_auth
+def save_llm_config():
+    try:
+        data = request.json
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': {'code': 400, 'message': '请求体不能为空'}
+            }), 400
+
+        config = {
+            "enabled": bool(data.get("enabled", False)),
+            "base_url": (data.get("base_url") or "").strip(),
+            "api_key": (data.get("api_key") or "").strip(),
+            "model": (data.get("model") or "deepseek-chat").strip(),
+            "temperature": float(data.get("temperature", 0.7))
+        }
+
+        if config["enabled"]:
+            if not config["base_url"]:
+                return jsonify({
+                    'success': False,
+                    'error': {'code': 400, 'message': 'API 基础 URL 不能为空'}
+                }), 400
+            if not config["api_key"]:
+                return jsonify({
+                    'success': False,
+                    'error': {'code': 400, 'message': 'API Key 不能为空'}
+                }), 400
+
+        config_json = serialize_llm_config(config)
+        execute_db(
+            'UPDATE users SET llm_config = ? WHERE id = ?',
+            (config_json, g.current_user_id)
+        )
+
+        llm_service.clear_cache()
+
+        logger.info(f"LLM config saved for user: {g.current_user_id}, enabled: {config['enabled']}")
+        return jsonify({'success': True, 'data': config})
+    except Exception as e:
+        logger.error(f"Save LLM config failed: {e}")
+        raise
+
+@app.route('/api/llm/test', methods=['POST'])
+@require_auth
+def test_llm_connection():
+    try:
+        data = request.json
+        config = {
+            "enabled": True,
+            "base_url": (data.get("base_url") or "").strip(),
+            "api_key": (data.get("api_key") or "").strip(),
+            "model": (data.get("model") or "deepseek-chat").strip(),
+            "temperature": 0.7
+        }
+
+        result = llm_service.test_connection(config)
+        return jsonify({'success': True, 'data': result})
+    except Exception as e:
+        logger.error(f"Test LLM connection failed: {e}")
         raise
 
 # ==================== 日记 API ====================
@@ -822,11 +923,40 @@ def chat():
             custom_words=[{'word': w['word'], 'type': w['word_type']} for w in custom_words]
         )
 
-        response = ai_companion.generate_response(
-            user_message,
-            history=history_list,
-            mood=mood_result['mood_label']
+        user_row = query_db(
+            'SELECT llm_config FROM users WHERE id = ?',
+            (g.current_user_id,), one=True
         )
+        user_llm_config = parse_llm_config(
+            user_row['llm_config'] if user_row else None
+        )
+
+        response_mode = "rule_engine"
+        response = None
+
+        if llm_service.is_llm_configured(user_llm_config):
+            mood_ctx = MoodContext(
+                mood_label=mood_result['mood_label'],
+                mood_score=mood_result['mood_score'],
+                keywords=mood_result.get('keywords', [])
+            )
+            llm_success, llm_response, source = llm_service.chat_with_fallback(
+                user_message=user_message,
+                conversation_history=history_list,
+                mood_context=mood_ctx,
+                user_config=user_llm_config
+            )
+            if llm_success:
+                response = llm_response
+                response_mode = "llm"
+
+        if response is None:
+            response = ai_companion.generate_response(
+                user_message,
+                history=history_list,
+                mood=mood_result['mood_label']
+            )
+            response_mode = "rule_engine"
 
         response_id = str(uuid.uuid4())
         execute_db('''
@@ -845,14 +975,15 @@ def chat():
             WHERE id = ? AND user_id = ?
             ''', (conversation_id, g.current_user_id))
 
-        logger.info(f"Chat message processed: {len(user_message)} chars, conversation: {conversation_id}")
+        logger.info(f"Chat: {len(user_message)} chars, mode={response_mode}, conv={conversation_id}")
         return jsonify({
             'success': True,
             'data': {
                 'response': response,
                 'conversation_id': conversation_id,
                 'mood': mood_result['mood_label'],
-                'sentiment': 'positive' if mood_result['mood_score'] >= 60 else 'negative' if mood_result['mood_score'] < 40 else 'neutral'
+                'sentiment': 'positive' if mood_result['mood_score'] >= 60 else 'negative' if mood_result['mood_score'] < 40 else 'neutral',
+                'response_mode': response_mode
             }
         })
     except Exception as e:
@@ -1167,13 +1298,18 @@ def index():
         'success': True,
         'data': {
             'name': 'Heart Garden - 心语花园',
-            'version': '2.0.0',
-            'description': 'AI 驱动的情感陪伴应用',
+            'version': '2.2.0',
+            'description': 'AI 驱动的情感陪伴应用 - 大模型混合模式',
             'endpoints': {
                 'auth': {
                     'register': 'POST /api/auth/register',
                     'login': 'POST /api/auth/login',
                     'me': 'GET /api/auth/me'
+                },
+                'llm': {
+                    'config_get': 'GET /api/llm/config',
+                    'config_save': 'POST /api/llm/config',
+                    'test': 'POST /api/llm/test'
                 },
                 'diaries': {
                     'list': 'GET /api/diaries',
@@ -1212,7 +1348,7 @@ def health_check():
         'data': {
             'status': 'healthy',
             'timestamp': datetime.now().isoformat(),
-            'version': '2.0.0'
+            'version': '2.2.0'
         }
     })
 
@@ -1220,9 +1356,9 @@ def health_check():
 if __name__ == '__main__':
     try:
         init_db()
-        logger.info("=== 心语花园 v2.0 已启动 ===")
+        logger.info("=== 心语花园 v2.2 已启动 ===")
         logger.info("=== API: http://localhost:5000 ===")
-        print("=== 心语花园 v2.0 已启动 ===")
+        print("=== 心语花园 v2.2 已启动 ===")
         print("=== API: http://localhost:5000 ===")
         app.run(debug=True, host='0.0.0.0', port=5000)
     except Exception as e:
