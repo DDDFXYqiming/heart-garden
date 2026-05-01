@@ -19,6 +19,8 @@ from services.mood_analyzer import MoodAnalyzer
 from services.ai_companion import AICompanion
 from services.llm_service import LLMService, parse_llm_config, serialize_llm_config
 from services.prompt_engine import MoodContext
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 # ==================== 日志配置 ====================
 def setup_logging():
@@ -65,6 +67,13 @@ DEV_MODE = os.getenv('DEV_MODE', '').lower() in ('1', 'true', 'yes')
 mood_analyzer = MoodAnalyzer()
 ai_companion = AICompanion()
 llm_service = LLMService()
+
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=[],
+    storage_uri="memory://"
+)
 
 # ==================== 数据库工具 ====================
 def get_db():
@@ -139,6 +148,18 @@ def require_auth(f):
 def _error_details(msg: str) -> str | None:
     """Return detailed error info only in debug/dev mode."""
     return msg if app.debug or DEV_MODE else None
+
+
+def _analyze_with_custom_words(user_id, text):
+    """Query custom_words from DB and analyze text with them."""
+    rows = query_db(
+        'SELECT word, word_type FROM custom_words WHERE user_id = ?',
+        (user_id,)
+    )
+    return mood_analyzer.analyze(
+        text,
+        custom_words=[{'word': w['word'], 'type': w['word_type']} for w in rows]
+    )
 
 
 # ==================== 统一错误处理 ====================
@@ -313,501 +334,516 @@ def init_db():
 from werkzeug.security import generate_password_hash, check_password_hash
 
 @app.route('/api/auth/register', methods=['POST'])
+@limiter.limit("5 per minute")
 def register():
-    try:
-        data = request.json
-        if not data:
-            return jsonify({
-                'success': False,
-                'error': {'code': 400, 'message': '请求体不能为空'}
-            }), 400
-
-        username = data.get('username', '').strip()
-        email = data.get('email', '').strip()
-        password = data.get('password', '')
-
-        if not username or not email or not password:
-            return jsonify({
-                'success': False,
-                'error': {'code': 400, 'message': '用户名、邮箱和密码不能为空'}
-            }), 400
-
-        if len(username) < 2 or len(username) > 50:
-            return jsonify({
-                'success': False,
-                'error': {'code': 400, 'message': '用户名长度需要在 2-50 个字符之间'}
-            }), 400
-
-        if len(password) < 6:
-            return jsonify({
-                'success': False,
-                'error': {'code': 400, 'message': '密码长度不能少于 6 个字符'}
-            }), 400
-
-        existing = query_db('SELECT id FROM users WHERE username = ? OR email = ?',
-                          (username, email), one=True)
-        if existing:
-            return jsonify({
-                'success': False,
-                'error': {'code': 400, 'message': '用户名或邮箱已被注册'}
-            }), 400
-
-        user_id = str(uuid.uuid4())
-        password_hash = generate_password_hash(password)
-
-        execute_db('''
-        INSERT INTO users (id, username, email, password_hash)
-        VALUES (?, ?, ?, ?)
-        ''', (user_id, username, email, password_hash))
-
-        token = create_token(user_id)
-
-        logger.info(f"User registered: {username}")
+    data = request.json
+    if not data:
         return jsonify({
-            'success': True,
-            'data': {
-                'user_id': user_id,
-                'username': username,
-                'email': email,
-                'token': token
-            }
-        })
-    except Exception as e:
-        logger.error(f"Register failed: {e}")
-        raise
+            'success': False,
+            'error': {'code': 400, 'message': '请求体不能为空'}
+        }), 400
+
+    username = data.get('username', '').strip()
+    email = data.get('email', '').strip()
+    password = data.get('password', '')
+
+    if not username or not email or not password:
+        return jsonify({
+            'success': False,
+            'error': {'code': 400, 'message': '用户名、邮箱和密码不能为空'}
+        }), 400
+
+    if len(username) < 2 or len(username) > 50:
+        return jsonify({
+            'success': False,
+            'error': {'code': 400, 'message': '用户名长度需要在 2-50 个字符之间'}
+        }), 400
+
+    if len(password) < 6:
+        return jsonify({
+            'success': False,
+            'error': {'code': 400, 'message': '密码长度不能少于 6 个字符'}
+        }), 400
+
+    existing = query_db('SELECT id FROM users WHERE username = ? OR email = ?',
+                      (username, email), one=True)
+    if existing:
+        return jsonify({
+            'success': False,
+            'error': {'code': 400, 'message': '用户名或邮箱已被注册'}
+        }), 400
+
+    user_id = str(uuid.uuid4())
+    password_hash = generate_password_hash(password)
+
+    execute_db('''
+    INSERT INTO users (id, username, email, password_hash)
+    VALUES (?, ?, ?, ?)
+    ''', (user_id, username, email, password_hash))
+
+    token = create_token(user_id)
+
+    logger.info(f"User registered: {username}")
+    return jsonify({
+        'success': True,
+        'data': {
+            'user_id': user_id,
+            'username': username,
+            'email': email,
+            'token': token
+        }
+    })
 
 @app.route('/api/auth/login', methods=['POST'])
+@limiter.limit("5 per minute")
 def login():
-    try:
-        data = request.json
-        if not data:
-            return jsonify({
-                'success': False,
-                'error': {'code': 400, 'message': '请求体不能为空'}
-            }), 400
-
-        username = data.get('username', '').strip()
-        email = data.get('email', '').strip()
-        password = data.get('password', '')
-
-        if not password:
-            return jsonify({
-                'success': False,
-                'error': {'code': 400, 'message': '密码不能为空'}
-            }), 400
-
-        if not username and not email:
-            return jsonify({
-                'success': False,
-                'error': {'code': 400, 'message': '用户名或邮箱不能为空'}
-            }), 400
-
-        user = query_db(
-            'SELECT id, username, email, password_hash FROM users WHERE username = ? OR email = ?',
-            (username or email, email or username), one=True
-        )
-
-        if not user or not check_password_hash(user['password_hash'], password):
-            return jsonify({
-                'success': False,
-                'error': {'code': 401, 'message': '用户名或密码错误'}
-            }), 401
-
-        token = create_token(user['id'])
-
-        logger.info(f"User logged in: {user['username']}")
+    data = request.json
+    if not data:
         return jsonify({
-            'success': True,
-            'data': {
-                'user_id': user['id'],
-                'username': user['username'],
-                'email': user['email'],
-                'token': token
-            }
-        })
-    except Exception as e:
-        logger.error(f"Login failed: {e}")
-        raise
+            'success': False,
+            'error': {'code': 400, 'message': '请求体不能为空'}
+        }), 400
+
+    username = data.get('username', '').strip()
+    email = data.get('email', '').strip()
+    password = data.get('password', '')
+
+    if not password:
+        return jsonify({
+            'success': False,
+            'error': {'code': 400, 'message': '密码不能为空'}
+        }), 400
+
+    if not username and not email:
+        return jsonify({
+            'success': False,
+            'error': {'code': 400, 'message': '用户名或邮箱不能为空'}
+        }), 400
+
+    user = query_db(
+        'SELECT id, username, email, password_hash FROM users WHERE username = ? OR email = ?',
+        (username or email, email or username), one=True
+    )
+
+    if not user or not check_password_hash(user['password_hash'], password):
+        return jsonify({
+            'success': False,
+            'error': {'code': 401, 'message': '用户名或密码错误'}
+        }), 401
+
+    token = create_token(user['id'])
+
+    logger.info(f"User logged in: {user['username']}")
+    return jsonify({
+        'success': True,
+        'data': {
+            'user_id': user['id'],
+            'username': user['username'],
+            'email': user['email'],
+            'token': token
+        }
+    })
 
 @app.route('/api/auth/me', methods=['GET'])
 @require_auth
 def get_current_user():
-    try:
-        user = query_db(
-            'SELECT id, username, email, created_at FROM users WHERE id = ?',
-            (g.current_user_id,), one=True
-        )
-        if not user:
-            return jsonify({
-                'success': False,
-                'error': {'code': 404, 'message': '用户不存在'}
-            }), 404
-
-        diary_count = query_db(
-            'SELECT COUNT(*) as count FROM diaries WHERE user_id = ?',
-            (g.current_user_id,), one=True
-        )
-
+    user = query_db(
+        'SELECT id, username, email, created_at FROM users WHERE id = ?',
+        (g.current_user_id,), one=True
+    )
+    if not user:
         return jsonify({
-            'success': True,
-            'data': {
-                'user_id': user['id'],
-                'username': user['username'],
-                'email': user['email'],
-                'created_at': user['created_at'],
-                'diary_count': diary_count['count'] if diary_count else 0
-            }
-        })
-    except Exception as e:
-        logger.error(f"Get current user failed: {e}")
-        raise
+            'success': False,
+            'error': {'code': 404, 'message': '用户不存在'}
+        }), 404
+
+    diary_count = query_db(
+        'SELECT COUNT(*) as count FROM diaries WHERE user_id = ?',
+        (g.current_user_id,), one=True
+    )
+
+    return jsonify({
+        'success': True,
+        'data': {
+            'user_id': user['id'],
+            'username': user['username'],
+            'email': user['email'],
+            'created_at': user['created_at'],
+            'diary_count': diary_count['count'] if diary_count else 0
+        }
+    })
 
 # ==================== LLM 配置 API ====================
 @app.route('/api/llm/config', methods=['GET'])
 @require_auth
 def get_llm_config():
-    try:
-        user = query_db(
-            'SELECT llm_config FROM users WHERE id = ?',
-            (g.current_user_id,), one=True
-        )
-        config = parse_llm_config(user['llm_config'] if user else None)
-        safe_config = dict(config)
-        if safe_config.get('api_key'):
-            key = safe_config['api_key']
-            safe_config['api_key'] = key[:8] + '****' if len(key) > 8 else '****'
-        return jsonify({'success': True, 'data': safe_config})
-    except Exception as e:
-        logger.error(f"Get LLM config failed: {e}")
-        raise
+    user = query_db(
+        'SELECT llm_config FROM users WHERE id = ?',
+        (g.current_user_id,), one=True
+    )
+    config = parse_llm_config(user['llm_config'] if user else None)
+    safe_config = dict(config)
+    if safe_config.get('api_key'):
+        key = safe_config['api_key']
+        safe_config['api_key'] = key[:8] + '****' if len(key) > 8 else '****'
+    return jsonify({'success': True, 'data': safe_config})
 
 @app.route('/api/llm/config', methods=['POST'])
 @require_auth
 def save_llm_config():
-    try:
-        data = request.json
-        if not data:
+    data = request.json
+    if not data:
+        return jsonify({
+            'success': False,
+            'error': {'code': 400, 'message': '请求体不能为空'}
+        }), 400
+
+    config = {
+        "enabled": bool(data.get("enabled", False)),
+        "base_url": (data.get("base_url") or "").strip(),
+        "api_key": (data.get("api_key") or "").strip(),
+        "model": (data.get("model") or "deepseek-chat").strip(),
+        "temperature": float(data.get("temperature", 0.7))
+    }
+
+    if config["enabled"]:
+        if not config["base_url"]:
             return jsonify({
                 'success': False,
-                'error': {'code': 400, 'message': '请求体不能为空'}
+                'error': {'code': 400, 'message': 'API 基础 URL 不能为空'}
+            }), 400
+        if not config["api_key"]:
+            return jsonify({
+                'success': False,
+                'error': {'code': 400, 'message': 'API Key 不能为空'}
             }), 400
 
-        config = {
-            "enabled": bool(data.get("enabled", False)),
-            "base_url": (data.get("base_url") or "").strip(),
-            "api_key": (data.get("api_key") or "").strip(),
-            "model": (data.get("model") or "deepseek-chat").strip(),
-            "temperature": float(data.get("temperature", 0.7))
-        }
+    config_json = serialize_llm_config(config)
+    execute_db(
+        'UPDATE users SET llm_config = ? WHERE id = ?',
+        (config_json, g.current_user_id)
+    )
 
-        if config["enabled"]:
-            if not config["base_url"]:
-                return jsonify({
-                    'success': False,
-                    'error': {'code': 400, 'message': 'API 基础 URL 不能为空'}
-                }), 400
-            if not config["api_key"]:
-                return jsonify({
-                    'success': False,
-                    'error': {'code': 400, 'message': 'API Key 不能为空'}
-                }), 400
+    llm_service.clear_cache()
 
-        config_json = serialize_llm_config(config)
-        execute_db(
-            'UPDATE users SET llm_config = ? WHERE id = ?',
-            (config_json, g.current_user_id)
-        )
-
-        llm_service.clear_cache()
-
-        logger.info(f"LLM config saved for user: {g.current_user_id}, enabled: {config['enabled']}")
-        return jsonify({'success': True, 'data': config})
-    except Exception as e:
-        logger.error(f"Save LLM config failed: {e}")
-        raise
+    logger.info(f"LLM config saved for user: {g.current_user_id}, enabled: {config['enabled']}")
+    return jsonify({'success': True, 'data': config})
 
 @app.route('/api/llm/test', methods=['POST'])
 @require_auth
 def test_llm_connection():
-    try:
-        data = request.json
-        config = {
-            "enabled": True,
-            "base_url": (data.get("base_url") or "").strip(),
-            "api_key": (data.get("api_key") or "").strip(),
-            "model": (data.get("model") or "deepseek-chat").strip(),
-            "temperature": 0.7
-        }
+    data = request.json
+    config = {
+        "enabled": True,
+        "base_url": (data.get("base_url") or "").strip(),
+        "api_key": (data.get("api_key") or "").strip(),
+        "model": (data.get("model") or "deepseek-chat").strip(),
+        "temperature": 0.7
+    }
 
-        result = llm_service.test_connection(config)
-        return jsonify({'success': True, 'data': result})
-    except Exception as e:
-        logger.error(f"Test LLM connection failed: {e}")
-        raise
+    result = llm_service.test_connection(config)
+    return jsonify({'success': True, 'data': result})
 
 # ==================== 日记 API ====================
 @app.route('/api/diaries', methods=['POST'])
 @require_auth
 def create_diary():
-    try:
-        data = request.json
-        if not data:
-            return jsonify({
-                'success': False,
-                'error': {'code': 400, 'message': '请求体不能为空'}
-            }), 400
-
-        diary_id = str(uuid.uuid4())
-        title = data.get('title', '无题')
-        content = data.get('content', '')
-        tags = data.get('tags')
-
-        if not content:
-            return jsonify({
-                'success': False,
-                'error': {'code': 400, 'message': '日记内容不能为空'}
-            }), 400
-
-        custom_words = query_db(
-            'SELECT word, word_type FROM custom_words WHERE user_id = ?',
-            (g.current_user_id,)
-        )
-        mood_result = mood_analyzer.analyze(
-            content,
-            custom_words=[{'word': w['word'], 'type': w['word_type']} for w in custom_words]
-        )
-
-        ai_analysis = ai_companion.analyze_diary(content, mood_result)
-
-        execute_db('''
-        INSERT INTO diaries (id, user_id, title, content, mood_score, mood_label, tags, ai_analysis)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (diary_id, g.current_user_id, title, content, mood_result['mood_score'],
-              mood_result['mood_label'], str(tags) if tags else None, ai_analysis))
-
-        execute_db('''
-        INSERT INTO mood_records (id, diary_id, user_id, mood_score, mood_label, keywords, trend)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (diary_id, diary_id, g.current_user_id, mood_result['mood_score'],
-              mood_result['mood_label'], str(mood_result['keywords']), mood_result['trend']))
-
-        logger.info(f"Diary created: {diary_id}, mood: {mood_result['mood_label']}, user: {g.current_user_id}")
+    data = request.json
+    if not data:
         return jsonify({
-            'success': True,
-            'data': {
-                'id': diary_id,
-                'title': title,
-                'mood_score': mood_result['mood_score'],
-                'mood_label': mood_result['mood_label']
-            }
-        })
-    except Exception as e:
-        logger.error(f"Create diary failed: {e}")
-        raise
+            'success': False,
+            'error': {'code': 400, 'message': '请求体不能为空'}
+        }), 400
+
+    diary_id = str(uuid.uuid4())
+    title = data.get('title', '无题')
+    content = data.get('content', '')
+    tags = data.get('tags')
+
+    if not content:
+        return jsonify({
+            'success': False,
+            'error': {'code': 400, 'message': '日记内容不能为空'}
+        }), 400
+
+    mood_result = _analyze_with_custom_words(g.current_user_id, content)
+
+    ai_analysis = ai_companion.analyze_diary(content, mood_result)
+
+    execute_db('''
+    INSERT INTO diaries (id, user_id, title, content, mood_score, mood_label, tags, ai_analysis)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (diary_id, g.current_user_id, title, content, mood_result['mood_score'],
+          mood_result['mood_label'], str(tags) if tags else None, ai_analysis))
+
+    execute_db('''
+    INSERT INTO mood_records (id, diary_id, user_id, mood_score, mood_label, keywords, trend)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (diary_id, diary_id, g.current_user_id, mood_result['mood_score'],
+          mood_result['mood_label'], str(mood_result['keywords']), mood_result['trend']))
+
+    logger.info(f"Diary created: {diary_id}, mood: {mood_result['mood_label']}, user: {g.current_user_id}")
+    return jsonify({
+        'success': True,
+        'data': {
+            'id': diary_id,
+            'title': title,
+            'mood_score': mood_result['mood_score'],
+            'mood_label': mood_result['mood_label']
+        }
+    })
 
 @app.route('/api/diaries', methods=['GET'])
 @require_auth
 def get_diaries():
-    try:
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 10, type=int)
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 10, type=int)
 
-        total = query_db(
-            'SELECT COUNT(*) as count FROM diaries WHERE user_id = ?',
-            (g.current_user_id,), one=True
-        )
+    total = query_db(
+        'SELECT COUNT(*) as count FROM diaries WHERE user_id = ?',
+        (g.current_user_id,), one=True
+    )
 
-        rows = query_db('''
-        SELECT id, title, content, mood_score, mood_label, ai_analysis, created_at
-        FROM diaries
-        WHERE user_id = ?
-        ORDER BY created_at DESC
-        LIMIT ? OFFSET ?
-        ''', (g.current_user_id, per_page, (page - 1) * per_page))
+    rows = query_db('''
+    SELECT id, title, content, mood_score, mood_label, ai_analysis, created_at
+    FROM diaries
+    WHERE user_id = ?
+    ORDER BY created_at DESC
+    LIMIT ? OFFSET ?
+    ''', (g.current_user_id, per_page, (page - 1) * per_page))
 
-        logger.info(f"Get diaries: page={page}, total={total['count']}, user={g.current_user_id}")
-        return jsonify({
-            'success': True,
-            'data': {
-                'total': total['count'] if total else 0,
-                'page': page,
-                'per_page': per_page,
-                'items': [
-                    {
-                        'id': r['id'],
-                        'title': r['title'],
-                        'content': r['content'],
-                        'mood_score': r['mood_score'],
-                        'mood_label': r['mood_label'],
-                        'ai_analysis': r['ai_analysis'],
-                        'created_at': r['created_at']
-                    }
-                    for r in rows
-                ]
-            }
-        })
-    except Exception as e:
-        logger.error(f"Get diaries failed: {e}")
-        raise
+    logger.info(f"Get diaries: page={page}, total={total['count']}, user={g.current_user_id}")
+    return jsonify({
+        'success': True,
+        'data': {
+            'total': total['count'] if total else 0,
+            'page': page,
+            'per_page': per_page,
+            'items': [
+                {
+                    'id': r['id'],
+                    'title': r['title'],
+                    'content': r['content'],
+                    'mood_score': r['mood_score'],
+                    'mood_label': r['mood_label'],
+                    'ai_analysis': r['ai_analysis'],
+                    'created_at': r['created_at']
+                }
+                for r in rows
+            ]
+        }
+    })
 
 @app.route('/api/diaries/<diary_id>', methods=['PUT'])
 @require_auth
 def update_diary(diary_id):
-    try:
-        data = request.json
-        title = data.get('title')
-        content = data.get('content')
-        tags = data.get('tags')
+    data = request.json
+    title = data.get('title')
+    content = data.get('content')
+    tags = data.get('tags')
 
-        existing = query_db(
-            'SELECT id FROM diaries WHERE id = ? AND user_id = ?',
-            (diary_id, g.current_user_id), one=True
-        )
-        if not existing:
-            return jsonify({
-                'success': False,
-                'error': {'code': 404, 'message': '日记不存在'}
-            }), 404
-
-        mood_result = None
-        ai_analysis = None
-        if content:
-            custom_words = query_db(
-                'SELECT word, word_type FROM custom_words WHERE user_id = ?',
-                (g.current_user_id,)
-            )
-            mood_result = mood_analyzer.analyze(
-                content,
-                custom_words=[{'word': w['word'], 'type': w['word_type']} for w in custom_words]
-            )
-            ai_analysis = ai_companion.analyze_diary(content, mood_result)
-
-        if mood_result:
-            execute_db('''
-            UPDATE diaries
-            SET title = COALESCE(?, title),
-                content = COALESCE(?, content),
-                mood_score = ?,
-                mood_label = ?,
-                tags = COALESCE(?, tags),
-                ai_analysis = ?,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND user_id = ?
-            ''', (title, content, mood_result['mood_score'], mood_result['mood_label'],
-                  tags, ai_analysis, diary_id, g.current_user_id))
-        else:
-            execute_db('''
-            UPDATE diaries
-            SET title = COALESCE(?, title),
-                content = COALESCE(?, content),
-                tags = COALESCE(?, tags),
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND user_id = ?
-            ''', (title, content, tags, diary_id, g.current_user_id))
-
-        logger.info(f"Diary updated: {diary_id}, user: {g.current_user_id}")
+    existing = query_db(
+        'SELECT id FROM diaries WHERE id = ? AND user_id = ?',
+        (diary_id, g.current_user_id), one=True
+    )
+    if not existing:
         return jsonify({
-            'success': True,
-            'data': {
-                'id': diary_id,
-                'title': title,
-                'updated_at': datetime.now().isoformat()
-            }
-        })
-    except Exception as e:
-        logger.error(f"Update diary failed: {e}")
-        raise
+            'success': False,
+            'error': {'code': 404, 'message': '日记不存在'}
+        }), 404
+
+    mood_result = None
+    ai_analysis = None
+    if content:
+        mood_result = _analyze_with_custom_words(g.current_user_id, content)
+        ai_analysis = ai_companion.analyze_diary(content, mood_result)
+
+    if mood_result:
+        execute_db('''
+        UPDATE diaries
+        SET title = COALESCE(?, title),
+            content = COALESCE(?, content),
+            mood_score = ?,
+            mood_label = ?,
+            tags = COALESCE(?, tags),
+            ai_analysis = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND user_id = ?
+        ''', (title, content, mood_result['mood_score'], mood_result['mood_label'],
+              tags, ai_analysis, diary_id, g.current_user_id))
+    else:
+        execute_db('''
+        UPDATE diaries
+        SET title = COALESCE(?, title),
+            content = COALESCE(?, content),
+            tags = COALESCE(?, tags),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND user_id = ?
+        ''', (title, content, tags, diary_id, g.current_user_id))
+
+    logger.info(f"Diary updated: {diary_id}, user: {g.current_user_id}")
+    return jsonify({
+        'success': True,
+        'data': {
+            'id': diary_id,
+            'title': title,
+            'updated_at': datetime.now().isoformat()
+        }
+    })
 
 @app.route('/api/diaries/<diary_id>', methods=['DELETE'])
 @require_auth
 def delete_diary(diary_id):
-    try:
-        existing = query_db(
-            'SELECT id FROM diaries WHERE id = ? AND user_id = ?',
-            (diary_id, g.current_user_id), one=True
-        )
-        if not existing:
-            return jsonify({
-                'success': False,
-                'error': {'code': 404, 'message': '日记不存在'}
-            }), 404
-
-        execute_db('DELETE FROM mood_records WHERE diary_id = ?', (diary_id,))
-        execute_db('DELETE FROM diaries WHERE id = ? AND user_id = ?',
-                  (diary_id, g.current_user_id))
-
-        logger.info(f"Diary deleted: {diary_id}, user: {g.current_user_id}")
+    existing = query_db(
+        'SELECT id FROM diaries WHERE id = ? AND user_id = ?',
+        (diary_id, g.current_user_id), one=True
+    )
+    if not existing:
         return jsonify({
-            'success': True,
-            'data': None
-        })
-    except Exception as e:
-        logger.error(f"Delete diary failed: {e}")
-        raise
+            'success': False,
+            'error': {'code': 404, 'message': '日记不存在'}
+        }), 404
+
+    execute_db('DELETE FROM mood_records WHERE diary_id = ?', (diary_id,))
+    execute_db('DELETE FROM diaries WHERE id = ? AND user_id = ?',
+              (diary_id, g.current_user_id))
+
+    logger.info(f"Diary deleted: {diary_id}, user: {g.current_user_id}")
+    return jsonify({
+        'success': True,
+        'data': None
+    })
 
 # ==================== 对话 API ====================
 @app.route('/api/conversations', methods=['POST'])
 @require_auth
 def create_conversation():
-    try:
-        data = request.json
-        conversation_id = str(uuid.uuid4())
-        title = data.get('title', '新对话')
+    data = request.json
+    conversation_id = str(uuid.uuid4())
+    title = data.get('title', '新对话')
 
-        execute_db('''
-        INSERT INTO conversations (id, user_id, title)
-        VALUES (?, ?, ?)
-        ''', (conversation_id, g.current_user_id, title))
+    execute_db('''
+    INSERT INTO conversations (id, user_id, title)
+    VALUES (?, ?, ?)
+    ''', (conversation_id, g.current_user_id, title))
 
-        logger.info(f"Conversation created: {conversation_id}, user: {g.current_user_id}")
-        return jsonify({
-            'success': True,
-            'data': {
-                'id': conversation_id,
-                'title': title,
-                'created_at': datetime.now().isoformat()
-            }
-        })
-    except Exception as e:
-        logger.error(f"Create conversation failed: {e}")
-        raise
+    logger.info(f"Conversation created: {conversation_id}, user: {g.current_user_id}")
+    return jsonify({
+        'success': True,
+        'data': {
+            'id': conversation_id,
+            'title': title,
+            'created_at': datetime.now().isoformat()
+        }
+    })
 
 @app.route('/api/conversations', methods=['GET'])
 @require_auth
 def get_conversations():
-    try:
-        rows = query_db('''
-        SELECT c.id, c.title, c.created_at,
-               (SELECT content FROM chat_history
-                WHERE conversation_id = c.id
-                ORDER BY created_at DESC LIMIT 1) as last_message
-        FROM conversations c
-        WHERE c.user_id = ?
-        ORDER BY c.updated_at DESC
-        ''', (g.current_user_id,))
+    rows = query_db('''
+    SELECT c.id, c.title, c.created_at,
+           (SELECT content FROM chat_history
+            WHERE conversation_id = c.id
+            ORDER BY created_at DESC LIMIT 1) as last_message
+    FROM conversations c
+    WHERE c.user_id = ?
+    ORDER BY c.updated_at DESC
+    ''', (g.current_user_id,))
 
-        return jsonify({
-            'success': True,
-            'data': [
-                {
-                    'id': r['id'],
-                    'title': r['title'],
-                    'last_message': r['last_message'],
-                    'created_at': r['created_at']
-                }
-                for r in rows
-            ]
-        })
-    except Exception as e:
-        logger.error(f"Get conversations failed: {e}")
-        raise
+    return jsonify({
+        'success': True,
+        'data': [
+            {
+                'id': r['id'],
+                'title': r['title'],
+                'last_message': r['last_message'],
+                'created_at': r['created_at']
+            }
+            for r in rows
+        ]
+    })
 
 @app.route('/api/conversations/<conversation_id>', methods=['GET'])
 @require_auth
 def get_conversation(conversation_id):
-    try:
+    conv = query_db(
+        'SELECT id, title, created_at FROM conversations WHERE id = ? AND user_id = ?',
+        (conversation_id, g.current_user_id), one=True
+    )
+    if not conv:
+        return jsonify({
+            'success': False,
+            'error': {'code': 404, 'message': '对话不存在'}
+        }), 404
+
+    messages = query_db('''
+    SELECT id, role, content, mood_label, created_at
+    FROM chat_history
+    WHERE conversation_id = ?
+    ORDER BY created_at ASC
+    ''', (conversation_id,))
+
+    return jsonify({
+        'success': True,
+        'data': {
+            'id': conv['id'],
+            'title': conv['title'],
+            'created_at': conv['created_at'],
+            'messages': [
+                {
+                    'id': m['id'],
+                    'role': m['role'],
+                    'content': m['content'],
+                    'mood_label': m['mood_label'],
+                    'created_at': m['created_at']
+                }
+                for m in messages
+            ]
+        }
+    })
+
+@app.route('/api/conversations/<conversation_id>', methods=['DELETE'])
+@require_auth
+def delete_conversation(conversation_id):
+    existing = query_db(
+        'SELECT id FROM conversations WHERE id = ? AND user_id = ?',
+        (conversation_id, g.current_user_id), one=True
+    )
+    if not existing:
+        return jsonify({
+            'success': False,
+            'error': {'code': 404, 'message': '对话不存在'}
+        }), 404
+
+    execute_db('DELETE FROM chat_history WHERE conversation_id = ?', (conversation_id,))
+    execute_db('DELETE FROM conversations WHERE id = ? AND user_id = ?',
+              (conversation_id, g.current_user_id))
+
+    return jsonify({'success': True, 'data': None})
+
+# ==================== AI 对话 API ====================
+@app.route('/api/chat', methods=['POST'])
+@require_auth
+def chat():
+    data = request.json
+    user_message = data.get('message', '')
+    conversation_id = data.get('conversation_id')
+
+    if not user_message:
+        return jsonify({
+            'success': False,
+            'error': {'code': 400, 'message': '消息不能为空'}
+        }), 400
+
+    if not conversation_id:
+        conversation_id = str(uuid.uuid4())
+        execute_db('''
+        INSERT INTO conversations (id, user_id, title)
+        VALUES (?, ?, ?)
+        ''', (conversation_id, g.current_user_id, user_message[:50]))
+    else:
         conv = query_db(
-            'SELECT id, title, created_at FROM conversations WHERE id = ? AND user_id = ?',
+            'SELECT id FROM conversations WHERE id = ? AND user_id = ?',
             (conversation_id, g.current_user_id), one=True
         )
         if not conv:
@@ -816,480 +852,344 @@ def get_conversation(conversation_id):
                 'error': {'code': 404, 'message': '对话不存在'}
             }), 404
 
-        messages = query_db('''
-        SELECT id, role, content, mood_label, created_at
-        FROM chat_history
-        WHERE conversation_id = ?
-        ORDER BY created_at ASC
-        ''', (conversation_id,))
+    message_id = str(uuid.uuid4())
+    execute_db('''
+    INSERT INTO chat_history (id, conversation_id, role, content)
+    VALUES (?, ?, 'user', ?)
+    ''', (message_id, conversation_id, user_message))
 
-        return jsonify({
-            'success': True,
-            'data': {
-                'id': conv['id'],
-                'title': conv['title'],
-                'created_at': conv['created_at'],
-                'messages': [
-                    {
-                        'id': m['id'],
-                        'role': m['role'],
-                        'content': m['content'],
-                        'mood_label': m['mood_label'],
-                        'created_at': m['created_at']
-                    }
-                    for m in messages
-                ]
-            }
-        })
-    except Exception as e:
-        logger.error(f"Get conversation failed: {e}")
-        raise
+    history = query_db('''
+    SELECT role, content FROM chat_history
+    WHERE conversation_id = ?
+    ORDER BY created_at ASC
+    ''', (conversation_id,))
 
-@app.route('/api/conversations/<conversation_id>', methods=['DELETE'])
-@require_auth
-def delete_conversation(conversation_id):
-    try:
-        existing = query_db(
-            'SELECT id FROM conversations WHERE id = ? AND user_id = ?',
-            (conversation_id, g.current_user_id), one=True
+    history_list = [{'role': h['role'], 'content': h['content']} for h in history]
+
+    mood_result = _analyze_with_custom_words(g.current_user_id, user_message)
+
+    user_row = query_db(
+        'SELECT llm_config FROM users WHERE id = ?',
+        (g.current_user_id,), one=True
+    )
+    user_llm_config = parse_llm_config(
+        user_row['llm_config'] if user_row else None
+    )
+
+    response_mode = "rule_engine"
+    response = None
+
+    if llm_service.is_llm_configured(user_llm_config):
+        mood_ctx = MoodContext(
+            mood_label=mood_result['mood_label'],
+            mood_score=mood_result['mood_score'],
+            keywords=mood_result.get('keywords', [])
         )
-        if not existing:
-            return jsonify({
-                'success': False,
-                'error': {'code': 404, 'message': '对话不存在'}
-            }), 404
-
-        execute_db('DELETE FROM chat_history WHERE conversation_id = ?', (conversation_id,))
-        execute_db('DELETE FROM conversations WHERE id = ? AND user_id = ?',
-                  (conversation_id, g.current_user_id))
-
-        return jsonify({'success': True, 'data': None})
-    except Exception as e:
-        logger.error(f"Delete conversation failed: {e}")
-        raise
-
-# ==================== AI 对话 API ====================
-@app.route('/api/chat', methods=['POST'])
-@require_auth
-def chat():
-    try:
-        data = request.json
-        user_message = data.get('message', '')
-        conversation_id = data.get('conversation_id')
-
-        if not user_message:
-            return jsonify({
-                'success': False,
-                'error': {'code': 400, 'message': '消息不能为空'}
-            }), 400
-
-        if not conversation_id:
-            conversation_id = str(uuid.uuid4())
-            execute_db('''
-            INSERT INTO conversations (id, user_id, title)
-            VALUES (?, ?, ?)
-            ''', (conversation_id, g.current_user_id, user_message[:50]))
-        else:
-            conv = query_db(
-                'SELECT id FROM conversations WHERE id = ? AND user_id = ?',
-                (conversation_id, g.current_user_id), one=True
-            )
-            if not conv:
-                return jsonify({
-                    'success': False,
-                    'error': {'code': 404, 'message': '对话不存在'}
-                }), 404
-
-        message_id = str(uuid.uuid4())
-        execute_db('''
-        INSERT INTO chat_history (id, conversation_id, role, content)
-        VALUES (?, ?, 'user', ?)
-        ''', (message_id, conversation_id, user_message))
-
-        history = query_db('''
-        SELECT role, content FROM chat_history
-        WHERE conversation_id = ?
-        ORDER BY created_at ASC
-        ''', (conversation_id,))
-
-        history_list = [{'role': h['role'], 'content': h['content']} for h in history]
-
-        custom_words = query_db(
-            'SELECT word, word_type FROM custom_words WHERE user_id = ?',
-            (g.current_user_id,)
+        llm_success, llm_response, source = llm_service.chat_with_fallback(
+            user_message=user_message,
+            conversation_history=history_list,
+            mood_context=mood_ctx,
+            user_config=user_llm_config
         )
-        mood_result = mood_analyzer.analyze(
+        if llm_success:
+            response = llm_response
+            response_mode = "llm"
+
+    if response is None:
+        response = ai_companion.generate_response(
             user_message,
-            custom_words=[{'word': w['word'], 'type': w['word_type']} for w in custom_words]
+            history=history_list,
+            mood=mood_result['mood_label']
         )
-
-        user_row = query_db(
-            'SELECT llm_config FROM users WHERE id = ?',
-            (g.current_user_id,), one=True
-        )
-        user_llm_config = parse_llm_config(
-            user_row['llm_config'] if user_row else None
-        )
-
         response_mode = "rule_engine"
-        response = None
 
-        if llm_service.is_llm_configured(user_llm_config):
-            mood_ctx = MoodContext(
-                mood_label=mood_result['mood_label'],
-                mood_score=mood_result['mood_score'],
-                keywords=mood_result.get('keywords', [])
-            )
-            llm_success, llm_response, source = llm_service.chat_with_fallback(
-                user_message=user_message,
-                conversation_history=history_list,
-                mood_context=mood_ctx,
-                user_config=user_llm_config
-            )
-            if llm_success:
-                response = llm_response
-                response_mode = "llm"
+    response_id = str(uuid.uuid4())
+    execute_db('''
+    INSERT INTO chat_history (id, conversation_id, role, content, mood_label)
+    VALUES (?, ?, 'assistant', ?, ?)
+    ''', (response_id, conversation_id, response, mood_result['mood_label']))
 
-        if response is None:
-            response = ai_companion.generate_response(
-                user_message,
-                history=history_list,
-                mood=mood_result['mood_label']
-            )
-            response_mode = "rule_engine"
-
-        response_id = str(uuid.uuid4())
+    if len(history) <= 2:
         execute_db('''
-        INSERT INTO chat_history (id, conversation_id, role, content, mood_label)
-        VALUES (?, ?, 'assistant', ?, ?)
-        ''', (response_id, conversation_id, response, mood_result['mood_label']))
+        UPDATE conversations SET title = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND user_id = ?
+        ''', (user_message[:50], conversation_id, g.current_user_id))
+    else:
+        execute_db('''
+        UPDATE conversations SET updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND user_id = ?
+        ''', (conversation_id, g.current_user_id))
 
-        if len(history) <= 2:
-            execute_db('''
-            UPDATE conversations SET title = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND user_id = ?
-            ''', (user_message[:50], conversation_id, g.current_user_id))
-        else:
-            execute_db('''
-            UPDATE conversations SET updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND user_id = ?
-            ''', (conversation_id, g.current_user_id))
-
-        logger.info(f"Chat: {len(user_message)} chars, mode={response_mode}, conv={conversation_id}")
-        return jsonify({
-            'success': True,
-            'data': {
-                'response': response,
-                'conversation_id': conversation_id,
-                'mood': mood_result['mood_label'],
-                'sentiment': 'positive' if mood_result['mood_score'] >= 60 else 'negative' if mood_result['mood_score'] < 40 else 'neutral',
-                'response_mode': response_mode
-            }
-        })
-    except Exception as e:
-        logger.error(f"Chat failed: {e}")
-        raise
+    logger.info(f"Chat: {len(user_message)} chars, mode={response_mode}, conv={conversation_id}")
+    return jsonify({
+        'success': True,
+        'data': {
+            'response': response,
+            'conversation_id': conversation_id,
+            'mood': mood_result['mood_label'],
+            'sentiment': 'positive' if mood_result['mood_score'] >= 60 else 'negative' if mood_result['mood_score'] < 40 else 'neutral',
+            'response_mode': response_mode
+        }
+    })
 
 # ==================== 情绪分析 API ====================
 @app.route('/api/mood/analyze', methods=['POST'])
 @require_auth
 def analyze_text_mood():
-    try:
-        data = request.json
-        text = data.get('text', '')
-        if not text:
-            return jsonify({
-                'success': False,
-                'error': {'code': 400, 'message': '文本不能为空'}
-            }), 400
-
-        custom_words = query_db(
-            'SELECT word, word_type FROM custom_words WHERE user_id = ?',
-            (g.current_user_id,)
-        )
-        mood_result = mood_analyzer.analyze(
-            text,
-            custom_words=[{'word': w['word'], 'type': w['word_type']} for w in custom_words]
-        )
-
+    data = request.json
+    text = data.get('text', '')
+    if not text:
         return jsonify({
-            'success': True,
-            'data': mood_result
-        })
-    except Exception as e:
-        logger.error(f"Analyze text mood failed: {e}")
-        raise
+            'success': False,
+            'error': {'code': 400, 'message': '文本不能为空'}
+        }), 400
+
+    mood_result = _analyze_with_custom_words(g.current_user_id, text)
+
+    return jsonify({
+        'success': True,
+        'data': mood_result
+    })
 
 @app.route('/api/mood/trend', methods=['GET'])
 @require_auth
 def get_mood_trend():
-    try:
-        days = request.args.get('days', 7, type=int)
-        days = min(days, 90)
+    days = request.args.get('days', 7, type=int)
+    days = min(days, 90)
 
-        from datetime import datetime as dt, timedelta
-        cutoff = (dt.utcnow() - timedelta(days=days)).isoformat()
-        rows = query_db('''
-        SELECT mood_score, mood_label, timestamp
-        FROM mood_records
-        WHERE user_id = ? AND timestamp >= ?
-        ORDER BY timestamp DESC
-        ''', (g.current_user_id, cutoff))
+    cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+    rows = query_db('''
+    SELECT mood_score, mood_label, timestamp
+    FROM mood_records
+    WHERE user_id = ? AND timestamp >= ?
+    ORDER BY timestamp DESC
+    ''', (g.current_user_id, cutoff))
 
-        logger.info(f"Get mood trend: days={days}, records={len(rows)}, user={g.current_user_id}")
-        return jsonify({
-            'success': True,
-            'data': [
-                {
-                    'score': r['mood_score'],
-                    'label': r['mood_label'],
-                    'timestamp': r['timestamp']
-                }
-                for r in rows
-            ]
-        })
-    except Exception as e:
-        logger.error(f"Get mood trend failed: {e}")
-        raise
+    logger.info(f"Get mood trend: days={days}, records={len(rows)}, user={g.current_user_id}")
+    return jsonify({
+        'success': True,
+        'data': [
+            {
+                'score': r['mood_score'],
+                'label': r['mood_label'],
+                'timestamp': r['timestamp']
+            }
+            for r in rows
+        ]
+    })
 
 @app.route('/api/mood/distribution', methods=['GET'])
 @require_auth
 def get_mood_distribution():
-    try:
-        days = request.args.get('days', 7, type=int)
-        days = min(days, 90)
+    days = request.args.get('days', 7, type=int)
+    days = min(days, 90)
 
-        from datetime import datetime as dt, timedelta
-        cutoff = (dt.utcnow() - timedelta(days=days)).isoformat()
-        rows = query_db('''
-        SELECT mood_label, COUNT(*) as count
-        FROM mood_records
-        WHERE user_id = ? AND timestamp >= ?
-        GROUP BY mood_label
-        ORDER BY count DESC
-        ''', (g.current_user_id, cutoff))
+    cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+    rows = query_db('''
+    SELECT mood_label, COUNT(*) as count
+    FROM mood_records
+    WHERE user_id = ? AND timestamp >= ?
+    GROUP BY mood_label
+    ORDER BY count DESC
+    ''', (g.current_user_id, cutoff))
 
-        distribution = {r['mood_label']: r['count'] for r in rows}
-        all_moods = ['开心', '平静', '中性', '焦虑', '悲伤']
-        for mood in all_moods:
-            if mood not in distribution:
-                distribution[mood] = 0
+    distribution = {r['mood_label']: r['count'] for r in rows}
+    all_moods = ['开心', '平静', '中性', '焦虑', '悲伤']
+    for mood in all_moods:
+        if mood not in distribution:
+            distribution[mood] = 0
 
-        return jsonify({
-            'success': True,
-            'data': distribution
-        })
-    except Exception as e:
-        logger.error(f"Get mood distribution failed: {e}")
-        raise
+    return jsonify({
+        'success': True,
+        'data': distribution
+    })
 
 # ==================== 统计分析 API ====================
 @app.route('/api/stats/overview', methods=['GET'])
 @require_auth
 def get_stats_overview():
-    try:
-        total_diaries = query_db(
-            'SELECT COUNT(*) as count FROM diaries WHERE user_id = ?',
-            (g.current_user_id,), one=True
-        )
+    total_diaries = query_db(
+        'SELECT COUNT(*) as count FROM diaries WHERE user_id = ?',
+        (g.current_user_id,), one=True
+    )
 
-        total_moods = query_db(
-            'SELECT COUNT(*) as count FROM mood_records WHERE user_id = ?',
-            (g.current_user_id,), one=True
-        )
+    total_moods = query_db(
+        'SELECT COUNT(*) as count FROM mood_records WHERE user_id = ?',
+        (g.current_user_id,), one=True
+    )
 
-        avg_score = query_db(
-            'SELECT AVG(mood_score) as avg FROM mood_records WHERE user_id = ?',
-            (g.current_user_id,), one=True
-        )
+    avg_score = query_db(
+        'SELECT AVG(mood_score) as avg FROM mood_records WHERE user_id = ?',
+        (g.current_user_id,), one=True
+    )
 
-        most_common = query_db('''
-        SELECT mood_label, COUNT(*) as count
-        FROM mood_records WHERE user_id = ?
-        GROUP BY mood_label ORDER BY count DESC LIMIT 1
-        ''', (g.current_user_id,), one=True)
+    most_common = query_db('''
+    SELECT mood_label, COUNT(*) as count
+    FROM mood_records WHERE user_id = ?
+    GROUP BY mood_label ORDER BY count DESC LIMIT 1
+    ''', (g.current_user_id,), one=True)
 
-        from datetime import datetime as dt, timedelta
-        week_ago = (dt.utcnow() - timedelta(days=7)).isoformat()
+    week_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
 
-        last_7_days = query_db('''
-        SELECT AVG(mood_score) as avg_score, COUNT(*) as count
-        FROM mood_records
-        WHERE user_id = ? AND timestamp >= ?
-        ''', (g.current_user_id, week_ago), one=True)
+    last_7_days = query_db('''
+    SELECT AVG(mood_score) as avg_score, COUNT(*) as count
+    FROM mood_records
+    WHERE user_id = ? AND timestamp >= ?
+    ''', (g.current_user_id, week_ago), one=True)
 
-        recent_scores = query_db('''
-        SELECT mood_score FROM mood_records
-        WHERE user_id = ? AND timestamp >= ?
-        ORDER BY timestamp ASC
-        ''', (g.current_user_id, week_ago))
+    recent_scores = query_db('''
+    SELECT mood_score FROM mood_records
+    WHERE user_id = ? AND timestamp >= ?
+    ORDER BY timestamp ASC
+    ''', (g.current_user_id, week_ago))
 
-        trend = '平稳'
-        if recent_scores and len(recent_scores) >= 2:
-            scores = [r['mood_score'] for r in recent_scores]
-            if scores[-1] > scores[0] + 5:
-                trend = '上升'
-            elif scores[-1] < scores[0] - 5:
-                trend = '下降'
+    trend = '平稳'
+    if recent_scores and len(recent_scores) >= 2:
+        scores = [r['mood_score'] for r in recent_scores]
+        if scores[-1] > scores[0] + 5:
+            trend = '上升'
+        elif scores[-1] < scores[0] - 5:
+            trend = '下降'
 
-        total_conversations = query_db(
-            'SELECT COUNT(*) as count FROM conversations WHERE user_id = ?',
-            (g.current_user_id,), one=True
-        )
+    total_conversations = query_db(
+        'SELECT COUNT(*) as count FROM conversations WHERE user_id = ?',
+        (g.current_user_id,), one=True
+    )
 
-        return jsonify({
-            'success': True,
-            'data': {
-                'total_diaries': total_diaries['count'] if total_diaries else 0,
-                'total_mood_records': total_moods['count'] if total_moods else 0,
-                'total_conversations': total_conversations['count'] if total_conversations else 0,
-                'avg_mood_score': round(avg_score['avg'], 1) if avg_score and avg_score['avg'] else 50.0,
-                'most_common_mood': most_common['mood_label'] if most_common else '中性',
-                'last_7_days': {
-                    'avg_score': round(last_7_days['avg_score'], 1) if last_7_days and last_7_days['avg_score'] else 50.0,
-                    'trend': trend
-                }
+    return jsonify({
+        'success': True,
+        'data': {
+            'total_diaries': total_diaries['count'] if total_diaries else 0,
+            'total_mood_records': total_moods['count'] if total_moods else 0,
+            'total_conversations': total_conversations['count'] if total_conversations else 0,
+            'avg_mood_score': round(avg_score['avg'], 1) if avg_score and avg_score['avg'] else 50.0,
+            'most_common_mood': most_common['mood_label'] if most_common else '中性',
+            'last_7_days': {
+                'avg_score': round(last_7_days['avg_score'], 1) if last_7_days and last_7_days['avg_score'] else 50.0,
+                'trend': trend
             }
-        })
-    except Exception as e:
-        logger.error(f"Get stats overview failed: {e}")
-        raise
+        }
+    })
 
 # ==================== 自定义词库 API ====================
 @app.route('/api/mood/words', methods=['GET'])
 @require_auth
 def get_custom_words():
-    try:
-        rows = query_db('''
-        SELECT id, word, category, word_type, created_at
-        FROM custom_words
-        WHERE user_id = ?
-        ORDER BY created_at DESC
-        ''', (g.current_user_id,))
+    rows = query_db('''
+    SELECT id, word, category, word_type, created_at
+    FROM custom_words
+    WHERE user_id = ?
+    ORDER BY created_at DESC
+    ''', (g.current_user_id,))
 
-        return jsonify({
-            'success': True,
-            'data': [
-                {
-                    'id': r['id'],
-                    'word': r['word'],
-                    'category': r['category'],
-                    'word_type': r['word_type'],
-                    'created_at': r['created_at']
-                }
-                for r in rows
-            ]
-        })
-    except Exception as e:
-        logger.error(f"Get custom words failed: {e}")
-        raise
+    return jsonify({
+        'success': True,
+        'data': [
+            {
+                'id': r['id'],
+                'word': r['word'],
+                'category': r['category'],
+                'word_type': r['word_type'],
+                'created_at': r['created_at']
+            }
+            for r in rows
+        ]
+    })
 
 @app.route('/api/mood/words', methods=['POST'])
 @require_auth
 def add_custom_word():
-    try:
-        data = request.json
-        word = data.get('word', '').strip()
-        category = data.get('category', '自定义')
-        word_type = data.get('word_type', 'positive')
+    data = request.json
+    word = data.get('word', '').strip()
+    category = data.get('category', '自定义')
+    word_type = data.get('word_type', 'positive')
 
-        if not word:
-            return jsonify({
-                'success': False,
-                'error': {'code': 400, 'message': '词语不能为空'}
-            }), 400
-
-        if word_type not in ('positive', 'negative'):
-            return jsonify({
-                'success': False,
-                'error': {'code': 400, 'message': '词语类型必须是 positive 或 negative'}
-            }), 400
-
-        existing = query_db(
-            'SELECT id FROM custom_words WHERE user_id = ? AND word = ?',
-            (g.current_user_id, word), one=True
-        )
-        if existing:
-            return jsonify({
-                'success': False,
-                'error': {'code': 400, 'message': '该词语已存在'}
-            }), 400
-
-        word_id = str(uuid.uuid4())
-        execute_db('''
-        INSERT INTO custom_words (id, user_id, word, category, word_type)
-        VALUES (?, ?, ?, ?, ?)
-        ''', (word_id, g.current_user_id, word, category, word_type))
-
-        mood_analyzer.add_custom_word(word, word_type, category)
-
-        logger.info(f"Custom word added: {word} ({word_type}), user: {g.current_user_id}")
+    if not word:
         return jsonify({
-            'success': True,
-            'data': {
-                'id': word_id,
-                'word': word,
-                'category': category,
-                'word_type': word_type
-            }
-        })
-    except Exception as e:
-        logger.error(f"Add custom word failed: {e}")
-        raise
+            'success': False,
+            'error': {'code': 400, 'message': '词语不能为空'}
+        }), 400
+
+    if word_type not in ('positive', 'negative'):
+        return jsonify({
+            'success': False,
+            'error': {'code': 400, 'message': '词语类型必须是 positive 或 negative'}
+        }), 400
+
+    existing = query_db(
+        'SELECT id FROM custom_words WHERE user_id = ? AND word = ?',
+        (g.current_user_id, word), one=True
+    )
+    if existing:
+        return jsonify({
+            'success': False,
+            'error': {'code': 400, 'message': '该词语已存在'}
+        }), 400
+
+    word_id = str(uuid.uuid4())
+    execute_db('''
+    INSERT INTO custom_words (id, user_id, word, category, word_type)
+    VALUES (?, ?, ?, ?, ?)
+    ''', (word_id, g.current_user_id, word, category, word_type))
+
+    mood_analyzer.add_custom_word(word, word_type, category)
+
+    logger.info(f"Custom word added: {word} ({word_type}), user: {g.current_user_id}")
+    return jsonify({
+        'success': True,
+        'data': {
+            'id': word_id,
+            'word': word,
+            'category': category,
+            'word_type': word_type
+        }
+    })
 
 @app.route('/api/mood/words/<word_id>', methods=['DELETE'])
 @require_auth
 def delete_custom_word(word_id):
-    try:
-        existing = query_db(
-            'SELECT id, word FROM custom_words WHERE id = ? AND user_id = ?',
-            (word_id, g.current_user_id), one=True
-        )
-        if not existing:
-            return jsonify({
-                'success': False,
-                'error': {'code': 404, 'message': '词语不存在'}
-            }), 404
+    existing = query_db(
+        'SELECT id, word FROM custom_words WHERE id = ? AND user_id = ?',
+        (word_id, g.current_user_id), one=True
+    )
+    if not existing:
+        return jsonify({
+            'success': False,
+            'error': {'code': 404, 'message': '词语不存在'}
+        }), 404
 
-        execute_db('DELETE FROM custom_words WHERE id = ? AND user_id = ?',
-                  (word_id, g.current_user_id))
+    execute_db('DELETE FROM custom_words WHERE id = ? AND user_id = ?',
+              (word_id, g.current_user_id))
 
-        logger.info(f"Custom word deleted: {existing['word']}, user: {g.current_user_id}")
-        return jsonify({'success': True, 'data': None})
-    except Exception as e:
-        logger.error(f"Delete custom word failed: {e}")
-        raise
+    logger.info(f"Custom word deleted: {existing['word']}, user: {g.current_user_id}")
+    return jsonify({'success': True, 'data': None})
 
 # ==================== 记忆花园 API ====================
 @app.route('/api/garden', methods=['GET'])
 @require_auth
 def get_garden():
-    try:
-        rows = query_db('''
-        SELECT id, title, content, mood_score, created_at
-        FROM diaries
-        WHERE user_id = ?
-        ORDER BY created_at DESC
-        LIMIT 50
-        ''', (g.current_user_id,))
+    rows = query_db('''
+    SELECT id, title, content, mood_score, created_at
+    FROM diaries
+    WHERE user_id = ?
+    ORDER BY created_at DESC
+    LIMIT 50
+    ''', (g.current_user_id,))
 
-        logger.info(f"Get garden: {len(rows)} diaries, user: {g.current_user_id}")
-        return jsonify({
-            'success': True,
-            'data': [
-                {
-                    'id': r['id'],
-                    'title': r['title'],
-                    'content': r['content'],
-                    'mood_score': r['mood_score'],
-                    'created_at': r['created_at']
-                }
-                for r in rows
-            ]
-        })
-    except Exception as e:
-        logger.error(f"Get garden failed: {e}")
-        raise
+    logger.info(f"Get garden: {len(rows)} diaries, user: {g.current_user_id}")
+    return jsonify({
+        'success': True,
+        'data': [
+            {
+                'id': r['id'],
+                'title': r['title'],
+                'content': r['content'],
+                'mood_score': r['mood_score'],
+                'created_at': r['created_at']
+            }
+            for r in rows
+        ]
+    })
 
 # ==================== 首页 ====================
 @app.route('/', methods=['GET'])
