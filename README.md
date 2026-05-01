@@ -6,6 +6,22 @@ Heart Garden 是一个基于 AI 驱动的情感陪伴应用，旨在为用户提
 
 ## 技术架构
 
+### 前端技术栈 (v2.1 新增)
+
+- **框架**: Vue 3 (Composition API + `<script setup>`)
+- **构建工具**: Vite 6
+- **路由**: Vue Router 4
+- **状态管理**: Pinia
+- **HTTP 客户端**: Axios
+- **样式方案**: Tailwind CSS 3
+- **图表**: Chart.js + vue-chartjs
+- **设计风格**: 手绘风格 (Hand-Drawn Design)
+  - 手写字体 (Kalam / Patrick Hand)
+  - 不规则 wobbly 边框
+  - 硬阴影（无模糊）效果
+  - 纸张纹理背景
+  - 胶带/图钉装饰元素
+
 ### 后端技术栈
 
 - **Web 框架**: Flask 3.0.0
@@ -488,26 +504,46 @@ Heart Garden 是一个基于 AI 驱动的情感陪伴应用，旨在为用户提
 
 ### 本地部署
 
-1. 创建虚拟环境
+1. 克隆项目
+```bash
+git clone https://github.com/DDDFXYqiming/heart-garden.git
+cd heart-garden
+```
+
+2. 创建虚拟环境（后端）
 ```bash
 python -m venv venv
 source venv/bin/activate
 ```
 
-2. 安装依赖
+3. 安装后端依赖
 ```bash
 pip install -r requirements.txt
 ```
 
-3. 配置环境变量
+4. 安装前端依赖
 ```bash
-cp .env.example .env
-# 编辑.env 文件，设置必要配置
+cd frontend
+npm install
+cd ..
 ```
 
-4. 运行应用
+5. 配置环境变量
+```bash
+cp .env.example .env
+```
+
+6. 启动后端（终端 1）
 ```bash
 python -m app.main
+# 后端运行在 http://localhost:5000
+```
+
+7. 启动前端（终端 2）
+```bash
+cd frontend
+npm run dev
+# 前端运行在 http://localhost:3000
 ```
 
 ### Docker 部署
@@ -565,12 +601,18 @@ logger.exception("异常信息")
 - **自定义词库**: 用户可扩展情绪词库
 - **UUID 主键**: 所有数据表使用 UUID
 
-### v2.1 - 规划中 📋
+### v2.1 - 前端应用 ✅
 
-- 语音日记功能
+- **Vue 3 前端**: 手绘风格 UI，完整的前后端分离 SPA
+- **页面实现**: 首页、登录/注册、日记列表/编辑、AI 对话、情绪趋势、统计概览、记忆花园、设置
+- **设计系统**: 手绘风格（Hand-Drawn），含 wobbly 边框、硬阴影、纸张纹理
+
+### v2.2 - 规划中 📋
+
 - AI 回复风格个性化
-- 高级情绪分析
+- 语音日记功能
 - 单元测试覆盖
+- 性能优化
 
 ## 版权说明
 

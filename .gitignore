@@ -65,6 +65,9 @@ htmlcov/
 *.whl
 *.zip
 
+# Node
+frontend/node_modules/
+
 # 内部文档（不上传 GitHub，但 AI 工具需可访问）
 SPEC.md
 spec.md
