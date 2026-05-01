@@ -171,10 +171,23 @@ npm run dev
 - 移除 20+ 个冗余 try/except（全局 error handler 已兜底）
 - 删除 chart.js + vue-chartjs 未使用依赖（~150KB）
 
-### 🔄 v2.5 - 功能修复与性能优化 (开发中)
+### ✅ v2.5 - 功能修复与性能优化
 - 修复 AI 陪伴对话历史丢失问题（刷新/切页后对话清空）
-- SQL 查询优化（N+1 修复、stats 合并查询）
-- 前端 LLM 超时调整
+- N+1 查询修复：conversations 改用 LEFT JOIN
+- stats SQL 合并：7 次查询合并到 3 次
+- 新增 GET /api/diaries/:id 端点
+- 前端 LLM 超时 15s → 60s
+- mood_analyzer 单遍关键词匹配
+
+### ✅ v2.6 - SSE 流式响应
+- 新增 /api/chat/stream POST 端点，SSE 事件流
+- LLMService.chat_stream 逐 token 流式返回
+- ChatPage 改用 fetch ReadableStream 打字机效果
+
+### ✅ v2.7 - 测试覆盖
+- mood_analyzer 单元测试（11 个用例）
+- prompt_engine 单元测试（6 个用例）
+- API 集成测试（16 个用例：auth/diary/stats/mood/conversation）
 
 ## API 接口
 
