@@ -189,6 +189,10 @@ npm run dev
 - prompt_engine 单元测试（6 个用例）
 - API 集成测试（16 个用例：auth/diary/stats/mood/conversation）
 
+### ✅ v2.8 - 代码清理
+- LLM provider 缓存改为 OrderedDict LRU，最多保留 10 个
+- 正常操作日志 info → debug
+
 ## API 接口
 
 详见 [SPEC.md](./SPEC.md) 中的 API 接口一览部分。
