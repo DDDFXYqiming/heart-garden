@@ -65,7 +65,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { chat, getConversations, getConversation } from '@/api'
+import { chatStream, getConversations, getConversation } from '@/api'
 
 const messages = ref([])
 const conversations = ref([])
@@ -158,6 +158,7 @@ async function handleSend() {
 
     refreshConversationList()
   } catch (err) {
+    console.error('发送流式聊天失败:', err)
     assistantMsg.content = assistantMsg.content || '抱歉，我走神了，能再说一遍吗？'
   } finally {
     loading.value = false

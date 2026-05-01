@@ -210,6 +210,11 @@ npm run dev
 - LLM 配置检查、调用结果、流式响应、失败降级原因均进入日志
 - 新增日志回归测试，覆盖日志幂等、请求 ID、SSE 流式上下文
 
+### ✅ v3.0.3 - 前端流式调用修复
+- 修复 ChatPage 调用 chatStream 但未导入导致的运行时 ReferenceError
+- chatStream 增加 HTTP 状态与 ReadableStream body 校验，错误进入浏览器控制台
+- 新增前端契约回归测试，防止流式调用导入再次缺失
+
 ## API 接口
 
 详见 [SPEC.md](./SPEC.md) 中的 API 接口一览部分。

@@ -63,9 +63,9 @@ export function chat(message, conversationId = null) {
   return api.post('/chat', { message, conversation_id: conversationId })
 }
 
-export function chatStream(message, conversationId = null) {
+export async function chatStream(message, conversationId = null) {
   const token = localStorage.getItem('token')
-  return fetch('/api/chat/stream', {
+  const response = await fetch('/api/chat/stream', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -73,6 +73,23 @@ export function chatStream(message, conversationId = null) {
     },
     body: JSON.stringify({ message, conversation_id: conversationId })
   })
+
+  if (!response.ok) {
+    let errorMessage = `请求失败 (${response.status})`
+    try {
+      const data = await response.clone().json()
+      errorMessage = data?.error?.message || errorMessage
+    } catch (e) {
+      // 保留默认错误信息
+    }
+    throw new Error(errorMessage)
+  }
+
+  if (!response.body) {
+    throw new Error('浏览器不支持流式响应')
+  }
+
+  return response
 }
 
 export function getConversations() {
