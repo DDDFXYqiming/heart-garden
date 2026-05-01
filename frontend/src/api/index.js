@@ -63,6 +63,18 @@ export function chat(message, conversationId = null) {
   return api.post('/chat', { message, conversation_id: conversationId })
 }
 
+export function chatStream(message, conversationId = null) {
+  const token = localStorage.getItem('token')
+  return fetch('/api/chat/stream', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': token ? `Bearer ${token}` : ''
+    },
+    body: JSON.stringify({ message, conversation_id: conversationId })
+  })
+}
+
 export function getConversations() {
   return api.get('/conversations')
 }

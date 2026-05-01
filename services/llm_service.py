@@ -6,7 +6,7 @@
 import os
 import json
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Generator
 
 from .interface.llm_interface import LLMInterface, Message, ChatResponse
 from .openai_compatible import OpenAICompatibleProvider
@@ -124,6 +124,44 @@ class LLMService:
         else:
             logger.warning(f"LLM failed, falling back to rule engine: {error}")
             return False, "", "rule_engine"
+
+    def chat_stream(
+        self,
+        user_message: str,
+        conversation_history: Optional[List[Dict]] = None,
+        mood_context=None,
+        user_config: Optional[Dict] = None,
+        user_preferences: Optional[Dict] = None
+    ) -> Generator[str, None, None]:
+        """流式对话，逐 token 返回"""
+        if not self.is_llm_configured(user_config):
+            return
+
+        config = self._merge_config(user_config)
+        from .prompt_engine import PromptBuilder
+        prompt_builder = PromptBuilder(
+            preferences=prompt_engine_prefs_from_dict(user_preferences) if user_preferences else None
+        )
+
+        system_prompt = prompt_builder.build_system_prompt()
+        user_msg = prompt_builder.build_user_message(
+            user_message, conversation_history, mood_context
+        )
+
+        messages = [Message(role="system", content=system_prompt)]
+        if conversation_history:
+            for msg in conversation_history[-10:]:
+                messages.append(Message(role=msg["role"], content=msg["content"]))
+        messages.append(Message(role="user", content=user_msg))
+
+        provider = self._get_provider(user_config)
+        temp = config.get("temperature", 0.7)
+        try:
+            for chunk in provider.chat_stream(messages, temperature=temp, max_tokens=1024):
+                yield chunk
+        except Exception as e:
+            logger.error(f"LLM stream failed: {e}")
+            return
 
     def test_connection(self, user_config: Optional[Dict] = None) -> Dict:
         config = self._merge_config(user_config)

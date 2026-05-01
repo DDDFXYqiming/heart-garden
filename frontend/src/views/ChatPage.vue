@@ -115,30 +115,50 @@ async function loadConversation(id) {
   }
 }
 
-// 发送消息
+// 发送消息（SSE 流式）
 async function handleSend() {
   if (!input.value.trim()) return
   const msg = input.value
   input.value = ''
 
-  // 如果没有当前对话，先创建一个（会由后端自动创建）
   messages.value.push({ role: 'user', content: msg })
+  // 添加空的 assistant 消息用于流式填充
+  const assistantMsg = { role: 'assistant', content: '', mood_label: undefined, response_mode: undefined }
+  messages.value.push(assistantMsg)
   loading.value = true
 
   try {
-    const res = await chat(msg, currentConvId.value)
-    currentConvId.value = res.data.conversation_id
-    messages.value.push({
-      role: 'assistant',
-      content: res.data.response,
-      mood_label: res.data.mood,
-      response_mode: res.data.response_mode
-    })
+    const response = await chatStream(msg, currentConvId.value)
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
 
-    // 刷新左侧对话列表
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+
+      const lines = buffer.split('\n')
+      buffer = lines.pop() // 保留未完成的行
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        try {
+          const data = JSON.parse(line.slice(6))
+          if (data.type === 'chunk') {
+            assistantMsg.content += data.content
+          } else if (data.type === 'done') {
+            currentConvId.value = data.conversation_id
+            assistantMsg.mood_label = data.mood
+            assistantMsg.response_mode = data.response_mode
+          }
+        } catch (e) { /* ignore parse errors */ }
+      }
+    }
+
     refreshConversationList()
   } catch (err) {
-    messages.value.push({ role: 'assistant', content: '抱歉，我走神了，能再说一遍吗？' })
+    assistantMsg.content = assistantMsg.content || '抱歉，我走神了，能再说一遍吗？'
   } finally {
     loading.value = false
   }

@@ -6,12 +6,14 @@ Author: 林溪 (你的专属 AI 伴侣)
 Created: 2026.04.28
 """
 
-from flask import Flask, request, jsonify, g
+from flask import Flask, request, jsonify, g, send_from_directory
 from flask_cors import CORS
 import sqlite3
 from datetime import datetime, timedelta
 import os
+import json
 import logging
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -25,12 +27,16 @@ from services.prompt_engine import MoodContext
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+APP_DIR = Path(__file__).resolve().parent
+STATIC_DIR = Path(os.getenv('STATIC_DIR', APP_DIR / 'static'))
+
 # ==================== 日志配置 ====================
 def setup_logging():
-    log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
-    os.makedirs(log_dir, exist_ok=True)
+    log_dir = Path(os.getenv('LOG_DIR', BASE_DIR / 'logs'))
+    log_dir.mkdir(parents=True, exist_ok=True)
 
-    log_file = os.path.join(log_dir, 'heart_garden.log')
+    log_file = log_dir / 'heart_garden.log'
 
     file_handler = RotatingFileHandler(
         log_file,
@@ -45,7 +51,8 @@ def setup_logging():
     file_handler.setFormatter(formatter)
 
     logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
+    log_level = getattr(logging, os.getenv('LOG_LEVEL', 'INFO').upper(), logging.INFO)
+    logger.setLevel(log_level)
     logger.addHandler(file_handler)
 
     return logger
@@ -53,7 +60,7 @@ def setup_logging():
 logger = setup_logging()
 
 # ==================== Flask 应用初始化 ====================
-app = Flask(__name__)
+app = Flask(__name__, static_folder=None)
 CORS(app)
 
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-here')
@@ -81,6 +88,8 @@ limiter = Limiter(
 # ==================== 数据库工具 ====================
 def get_db():
     if 'db' not in g:
+        database_path = Path(app.config['DATABASE'])
+        database_path.parent.mkdir(parents=True, exist_ok=True)
         g.db = sqlite3.connect(app.config['DATABASE'])
         g.db.row_factory = sqlite3.Row
     return g.db
@@ -212,6 +221,8 @@ def handle_exception(error):
 # ==================== 数据库初始化 ====================
 def init_db():
     try:
+        database_path = Path(app.config['DATABASE'])
+        database_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(app.config['DATABASE'])
         cursor = conn.cursor()
 
@@ -966,6 +977,125 @@ def chat():
         }
     })
 
+@app.route('/api/chat/stream', methods=['POST'])
+@require_auth
+def chat_stream():
+    data = request.json
+    user_message = data.get('message', '')
+    conversation_id = data.get('conversation_id')
+
+    if not user_message:
+        return jsonify({
+            'success': False,
+            'error': {'code': 400, 'message': '消息不能为空'}
+        }), 400
+
+    if not conversation_id:
+        conversation_id = str(uuid.uuid4())
+        execute_db('''
+        INSERT INTO conversations (id, user_id, title)
+        VALUES (?, ?, ?)
+        ''', (conversation_id, g.current_user_id, user_message[:50]))
+    else:
+        conv = query_db(
+            'SELECT id FROM conversations WHERE id = ? AND user_id = ?',
+            (conversation_id, g.current_user_id), one=True
+        )
+        if not conv:
+            return jsonify({
+                'success': False,
+                'error': {'code': 404, 'message': '对话不存在'}
+            }), 404
+
+    execute_db('''
+    INSERT INTO chat_history (id, conversation_id, role, content)
+    VALUES (?, ?, 'user', ?)
+    ''', (str(uuid.uuid4()), conversation_id, user_message))
+
+    history = query_db('''
+    SELECT role, content FROM chat_history
+    WHERE conversation_id = ?
+    ORDER BY created_at ASC
+    ''', (conversation_id,))
+    history_list = [{'role': h['role'], 'content': h['content']} for h in history]
+
+    mood_result = _analyze_with_custom_words(g.current_user_id, user_message)
+
+    user_row = query_db(
+        'SELECT llm_config FROM users WHERE id = ?',
+        (g.current_user_id,), one=True
+    )
+    user_llm_config = parse_llm_config(
+        user_row['llm_config'] if user_row else None
+    )
+
+    def generate():
+        full_response = []
+        response_mode = "rule_engine"
+
+        if llm_service.is_llm_configured(user_llm_config):
+            response_mode = "llm"
+            mood_ctx = MoodContext(
+                mood_label=mood_result['mood_label'],
+                mood_score=mood_result['mood_score'],
+                keywords=mood_result.get('keywords', [])
+            )
+            try:
+                for chunk in llm_service.chat_stream(
+                    user_message=user_message,
+                    conversation_history=history_list,
+                    mood_context=mood_ctx,
+                    user_config=user_llm_config
+                ):
+                    full_response.append(chunk)
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+            except Exception as e:
+                logger.error(f"Stream error: {e}")
+                response_mode = "rule_engine"
+
+        if not full_response:
+            response_mode = "rule_engine"
+            response = ai_companion.generate_response(
+                user_message, history=history_list, mood=mood_result['mood_label']
+            )
+            full_response = [response]
+            yield f"data: {json.dumps({'type': 'chunk', 'content': response}, ensure_ascii=False)}\n\n"
+
+        final_text = ''.join(full_response)
+        execute_db('''
+        INSERT INTO chat_history (id, conversation_id, role, content, mood_label)
+        VALUES (?, ?, 'assistant', ?, ?)
+        ''', (str(uuid.uuid4()), conversation_id, final_text, mood_result['mood_label']))
+
+        if len(history) <= 2:
+            execute_db('''
+            UPDATE conversations SET title = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND user_id = ?
+            ''', (user_message[:50], conversation_id, g.current_user_id))
+        else:
+            execute_db('''
+            UPDATE conversations SET updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND user_id = ?
+            ''', (conversation_id, g.current_user_id))
+
+        meta = {
+            'type': 'done',
+            'conversation_id': conversation_id,
+            'mood': mood_result['mood_label'],
+            'response_mode': response_mode
+        }
+        yield f"data: {json.dumps(meta, ensure_ascii=False)}\n\n"
+
+    return app.response_class(
+        generate(),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive'
+        }
+    )
+
 # ==================== 情绪分析 API ====================
 @app.route('/api/mood/analyze', methods=['POST'])
 @require_auth
@@ -1225,9 +1355,9 @@ def get_garden():
         ]
     })
 
-# ==================== 首页 ====================
-@app.route('/', methods=['GET'])
-def index():
+# ==================== API 信息 ====================
+@app.route('/api/info', methods=['GET'])
+def api_info():
     return jsonify({
         'success': True,
         'data': {
@@ -1278,6 +1408,7 @@ def index():
 @app.route('/api/health', methods=['GET'])
 def health_check():
     return jsonify({
+        'ok': True,
         'success': True,
         'data': {
             'status': 'healthy',
@@ -1286,15 +1417,44 @@ def health_check():
         }
     })
 
+# ==================== 前端静态文件 ====================
+@app.route('/', defaults={'path': ''}, methods=['GET'])
+@app.route('/<path:path>', methods=['GET'])
+def serve_spa(path):
+    if path.startswith('api/'):
+        return jsonify({
+            'success': False,
+            'error': {'code': 404, 'message': '资源不存在'}
+        }), 404
+
+    requested_path = STATIC_DIR / path if path else STATIC_DIR / 'index.html'
+    if path and requested_path.is_file():
+        return send_from_directory(str(STATIC_DIR), path)
+
+    index_path = STATIC_DIR / 'index.html'
+    if index_path.is_file():
+        return send_from_directory(str(STATIC_DIR), 'index.html')
+
+    return jsonify({
+        'success': True,
+        'data': {
+            'name': 'Heart Garden - 心语花园',
+            'version': '2.2.0',
+            'description': '前端静态文件尚未构建，请运行 npm --prefix frontend run build。'
+        }
+    })
+
 # ==================== 启动 ====================
 if __name__ == '__main__':
     try:
+        port = int(os.environ.get('PORT', '5000'))
+        debug = os.getenv('FLASK_DEBUG', '').lower() in ('1', 'true', 'yes')
         init_db()
         logger.info("=== 心语花园 v2.2 已启动 ===")
-        logger.info("=== API: http://localhost:5000 ===")
+        logger.info(f"=== API: http://0.0.0.0:{port} ===")
         print("=== 心语花园 v2.2 已启动 ===")
-        print("=== API: http://localhost:5000 ===")
-        app.run(debug=True, host='0.0.0.0', port=5000)
+        print(f"=== API: http://0.0.0.0:{port} ===")
+        app.run(debug=debug, host='0.0.0.0', port=port)
     except Exception as e:
         logger.error(f"Startup failed: {e}")
         raise
