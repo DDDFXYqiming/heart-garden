@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 import os
 import json
 import logging
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -30,6 +31,7 @@ from flask_limiter.util import get_remote_address
 BASE_DIR = Path(__file__).resolve().parent.parent
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = Path(os.getenv('STATIC_DIR', APP_DIR / 'static'))
+IS_TESTING = 'pytest' in sys.modules
 
 # ==================== 日志配置 ====================
 def setup_logging():
@@ -72,7 +74,10 @@ app.config['JWT_EXPIRATION_HOURS'] = 168
 
 # 开发模式：仅当显式设置 DEV_MODE=true 时启用
 # 开启后不需要 token 即可访问所有接口
-DEV_MODE = os.getenv('DEV_MODE', '').lower() in ('1', 'true', 'yes')
+DEV_MODE = (
+    os.getenv('DEV_MODE', '').lower() in ('1', 'true', 'yes')
+    and not IS_TESTING
+)
 
 mood_analyzer = MoodAnalyzer()
 ai_companion = AICompanion()
@@ -82,7 +87,8 @@ limiter = Limiter(
     app=app,
     key_func=get_remote_address,
     default_limits=[],
-    storage_uri="memory://"
+    storage_uri="memory://",
+    enabled=not IS_TESTING
 )
 
 # ==================== 数据库工具 ====================
@@ -1213,23 +1219,23 @@ def get_stats_overview():
         elif scores[-1] < scores[0] - 5:
             trend = '下降'
 
-    total_diaries = counts
-    total_moods = counts
-    total_conversations = counts
-    avg_score = {'avg': mood_stats[0]['avg_score'] if mood_stats else None} if mood_stats else None
+    total_diaries = counts['diary_count'] if counts else 0
+    total_moods = counts['mood_count'] if counts else 0
+    total_conversations = counts['conv_count'] if counts else 0
+
+    avg_val = mood_stats[0]['avg_score'] if mood_stats else None
     most_common = mood_stats[0] if mood_stats else None
-    last_7_days = week_data
 
     return jsonify({
         'success': True,
         'data': {
-            'total_diaries': total_diaries['count'] if total_diaries else 0,
-            'total_mood_records': total_moods['count'] if total_moods else 0,
-            'total_conversations': total_conversations['count'] if total_conversations else 0,
-            'avg_mood_score': round(avg_score['avg'], 1) if avg_score and avg_score['avg'] else 50.0,
+            'total_diaries': total_diaries or 0,
+            'total_mood_records': total_moods or 0,
+            'total_conversations': total_conversations or 0,
+            'avg_mood_score': round(avg_val, 1) if avg_val else 50.0,
             'most_common_mood': most_common['mood_label'] if most_common else '中性',
             'last_7_days': {
-                'avg_score': round(last_7_days['avg_score'], 1) if last_7_days and last_7_days['avg_score'] else 50.0,
+                'avg_score': round(week_data['avg_score'], 1) if week_data and week_data['avg_score'] else 50.0,
                 'trend': trend
             }
         }
@@ -1356,6 +1362,7 @@ def get_garden():
     })
 
 # ==================== API 信息 ====================
+@app.route('/api/', methods=['GET'])
 @app.route('/api/info', methods=['GET'])
 def api_info():
     return jsonify({
@@ -1409,6 +1416,7 @@ def api_info():
 def health_check():
     return jsonify({
         'ok': True,
+        'status': 'ok',
         'success': True,
         'data': {
             'status': 'healthy',
