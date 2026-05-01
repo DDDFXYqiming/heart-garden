@@ -43,21 +43,26 @@ class MoodAnalyzer:
 
         self.positive_count = 0
         self.negative_count = 0
-
         active_positive = {}
         active_negative = {}
+        keywords = []
 
+        # 单遍扫描: 内置词 + 自定义词一次性匹配
         for mood, words in self.POSITIVE_WORDS.items():
             active_positive[mood] = list(words)
             for word in words:
                 if word in text:
                     self.positive_count += 1
+                    if word not in keywords:
+                        keywords.append(word)
 
         for mood, words in self.NEGATIVE_WORDS.items():
             active_negative[mood] = list(words)
             for word in words:
                 if word in text:
                     self.negative_count += 1
+                    if word not in keywords:
+                        keywords.append(word)
 
         for cw in custom_words:
             word = cw['word']
@@ -73,16 +78,17 @@ class MoodAnalyzer:
                     if '自定义' not in active_negative:
                         active_negative['自定义'] = []
                     active_negative['自定义'].append(word)
+                if word not in keywords:
+                    keywords.append(word)
 
         mood_score = self._calculate_mood_score()
         mood_label = self._determine_mood_label(mood_score)
-        keywords = self._extract_keywords(text, custom_words)
         trend = self._determine_trend(text, custom_words)
 
         return {
             'mood_score': mood_score,
             'mood_label': mood_label,
-            'keywords': keywords,
+            'keywords': keywords[:5],
             'trend': trend,
             'positive_count': self.positive_count,
             'negative_count': self.negative_count
@@ -111,27 +117,6 @@ class MoodAnalyzer:
             return '焦虑'
         else:
             return '悲伤'
-
-    def _extract_keywords(self, text: str, custom_words: Optional[List[Dict]] = None) -> List[str]:
-        keywords = []
-        custom_words = custom_words or []
-
-        for mood, words in self.POSITIVE_WORDS.items():
-            for word in words:
-                if word in text and word not in keywords:
-                    keywords.append(word)
-
-        for mood, words in self.NEGATIVE_WORDS.items():
-            for word in words:
-                if word in text and word not in keywords:
-                    keywords.append(word)
-
-        for cw in custom_words:
-            word = cw['word']
-            if word in text and word not in keywords:
-                keywords.append(word)
-
-        return keywords[:5]
 
     def _determine_trend(self, text: str, custom_words: Optional[List[Dict]] = None) -> str:
         custom_words = custom_words or []

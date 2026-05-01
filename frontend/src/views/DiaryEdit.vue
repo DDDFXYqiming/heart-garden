@@ -25,7 +25,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { createDiary, updateDiary, getDiaries } from '@/api'
+import { createDiary, updateDiary, getDiary } from '@/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -38,13 +38,11 @@ const error = ref('')
 onMounted(async () => {
   if (isEdit.value) {
     try {
-      const res = await getDiaries(1, 100)
-      const diary = res.data.items.find(d => d.id === route.params.id)
-      if (diary) {
-        title.value = diary.title
-        content.value = diary.content
-        result.value = { mood_score: diary.mood_score, mood_label: diary.mood_label, keywords: [] }
-      }
+      const res = await getDiary(route.params.id)
+      const diary = res.data
+      title.value = diary.title
+      content.value = diary.content
+      result.value = { mood_score: diary.mood_score, mood_label: diary.mood_label, keywords: [] }
     } catch (err) {
       error.value = '加载日记失败'
     }

@@ -2,7 +2,7 @@ import axios from 'axios'
 
 const api = axios.create({
   baseURL: '/api',
-  timeout: 15000,
+  timeout: 60000,
   headers: { 'Content-Type': 'application/json' }
 })
 
@@ -41,6 +41,10 @@ export function getMe() {
 
 export function getDiaries(page = 1, perPage = 10) {
   return api.get('/diaries', { params: { page, per_page: perPage } })
+}
+
+export function getDiary(id) {
+  return api.get(`/diaries/${id}`)
 }
 
 export function createDiary(title, content) {

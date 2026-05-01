@@ -637,6 +637,33 @@ def get_diaries():
         }
     })
 
+@app.route('/api/diaries/<diary_id>', methods=['GET'])
+@require_auth
+def get_diary(diary_id):
+    row = query_db('''
+    SELECT id, title, content, mood_score, mood_label, ai_analysis, created_at
+    FROM diaries WHERE id = ? AND user_id = ?
+    ''', (diary_id, g.current_user_id), one=True)
+
+    if not row:
+        return jsonify({
+            'success': False,
+            'error': {'code': 404, 'message': '日记不存在'}
+        }), 404
+
+    return jsonify({
+        'success': True,
+        'data': {
+            'id': row['id'],
+            'title': row['title'],
+            'content': row['content'],
+            'mood_score': row['mood_score'],
+            'mood_label': row['mood_label'],
+            'ai_analysis': row['ai_analysis'],
+            'created_at': row['created_at']
+        }
+    })
+
 @app.route('/api/diaries/<diary_id>', methods=['PUT'])
 @require_auth
 def update_diary(diary_id):
@@ -744,11 +771,15 @@ def create_conversation():
 @require_auth
 def get_conversations():
     rows = query_db('''
-    SELECT c.id, c.title, c.created_at,
-           (SELECT content FROM chat_history
-            WHERE conversation_id = c.id
-            ORDER BY created_at DESC LIMIT 1) as last_message
+    SELECT c.id, c.title, c.created_at, lm.content as last_message
     FROM conversations c
+    LEFT JOIN (
+        SELECT conversation_id, content
+        FROM chat_history
+        WHERE id IN (
+            SELECT MAX(id) FROM chat_history GROUP BY conversation_id
+        )
+    ) lm ON lm.conversation_id = c.id
     WHERE c.user_id = ?
     ORDER BY c.updated_at DESC
     ''', (g.current_user_id,))
@@ -1011,31 +1042,29 @@ def get_mood_distribution():
 @app.route('/api/stats/overview', methods=['GET'])
 @require_auth
 def get_stats_overview():
-    total_diaries = query_db(
-        'SELECT COUNT(*) as count FROM diaries WHERE user_id = ?',
-        (g.current_user_id,), one=True
-    )
+    # 合并查询1: 日记总数 + 对话总数
+    counts = query_db('''
+    SELECT
+        (SELECT COUNT(*) FROM diaries WHERE user_id = ?) as diary_count,
+        (SELECT COUNT(*) FROM conversations WHERE user_id = ?) as conv_count,
+        (SELECT COUNT(*) FROM mood_records WHERE user_id = ?) as mood_count
+    ''', (g.current_user_id, g.current_user_id, g.current_user_id), one=True)
 
-    total_moods = query_db(
-        'SELECT COUNT(*) as count FROM mood_records WHERE user_id = ?',
-        (g.current_user_id,), one=True
-    )
-
-    avg_score = query_db(
-        'SELECT AVG(mood_score) as avg FROM mood_records WHERE user_id = ?',
-        (g.current_user_id,), one=True
-    )
-
-    most_common = query_db('''
-    SELECT mood_label, COUNT(*) as count
-    FROM mood_records WHERE user_id = ?
-    GROUP BY mood_label ORDER BY count DESC LIMIT 1
-    ''', (g.current_user_id,), one=True)
-
+    # 合并查询2: 情绪统计（平均分、最常见标签、7天趋势）
     week_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
+    mood_stats = query_db('''
+    SELECT AVG(mood_score) as avg_score,
+           mood_label, COUNT(*) as label_count
+    FROM mood_records WHERE user_id = ?
+    GROUP BY mood_label ORDER BY label_count DESC LIMIT 1
+    ''', (g.current_user_id,))
 
-    last_7_days = query_db('''
-    SELECT AVG(mood_score) as avg_score, COUNT(*) as count
+    # 合并查询3: 7天内数据（平均分 + 趋势）
+    week_data = query_db('''
+    SELECT AVG(mood_score) as avg_score,
+           MIN(mood_score) as min_score,
+           MAX(mood_score) as max_score,
+           COUNT(*) as count
     FROM mood_records
     WHERE user_id = ? AND timestamp >= ?
     ''', (g.current_user_id, week_ago), one=True)
@@ -1054,10 +1083,12 @@ def get_stats_overview():
         elif scores[-1] < scores[0] - 5:
             trend = '下降'
 
-    total_conversations = query_db(
-        'SELECT COUNT(*) as count FROM conversations WHERE user_id = ?',
-        (g.current_user_id,), one=True
-    )
+    total_diaries = counts
+    total_moods = counts
+    total_conversations = counts
+    avg_score = {'avg': mood_stats[0]['avg_score'] if mood_stats else None} if mood_stats else None
+    most_common = mood_stats[0] if mood_stats else None
+    last_7_days = week_data
 
     return jsonify({
         'success': True,
