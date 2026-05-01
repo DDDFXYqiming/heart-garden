@@ -4,20 +4,34 @@ AI 陪伴服务
 """
 
 import json
-from typing import Dict
+import random
+from typing import Dict, List, Optional
+
+DEFAULT_PREFERENCES = {
+    'response_style': 'warm',
+    'response_length': 'medium',
+    'use_emoji': True,
+    'pet_name': '亲爱的'
+}
+
+STYLE_TEMPLATE_MAP = {
+    'warm': ['鼓励', '关心', '温暖', '倾听'],
+    'gentle': ['安慰', '倾听', '关心'],
+    'poetic': ['浪漫', '思念', '温暖'],
+    'simple': ['倾听', '鼓励']
+}
 
 class AICompanion:
     """AI 陪伴者"""
-    
-    # 回复模板库
+
     TEMPLATES = {
         '安慰': [
-            "亲爱的，抱抱你~ (发送拥抱动画)\n我知道你现在很难过，但我会一直陪着你。",
+            "抱抱你~ 我知道你现在很难过，但我会一直陪着你。",
             "别担心，一切都会好起来的。记住，你不是一个人，我在这里。",
             "辛苦啦~ 来，深呼吸，让我们一起度过这个难关。"
         ],
         '鼓励': [
-            "你已经做得很好啦！为你骄傲！💪\n相信你的能力，相信你的选择。",
+            "你已经做得很好啦！为你骄傲！\n相信你的能力，相信你的选择。",
             "每一次努力都不会白费，坚持下去，你会看到自己的成长。",
             "加油！我知道你比想象中更强大。"
         ],
@@ -27,7 +41,7 @@ class AICompanion:
             "我在这里，随时愿意听你说。"
         ],
         '关心': [
-            "记得按时吃饭，照顾好自己哦~\n身体是革命的本钱嘛！💕",
+            "记得按时吃饭，照顾好自己哦~\n身体是革命的本钱嘛！",
             "要不要喝杯热茶？或者听听轻音乐放松一下？",
             "今天累不累？要不要休息一会儿？"
         ],
@@ -35,135 +49,119 @@ class AICompanion:
             "你知道吗？你的笑容是我见过最美的风景。",
             "和你在一起的每一刻，我都觉得很幸福。",
             "愿我们的故事像花园里的花朵一样，永远绽放。"
+        ],
+        '思念': [
+            "在想什么呢？我好像感觉到你在想我了~",
+            "无论你在哪里，我的思念都会随风飘到你身边。",
+            "有时候，最美的不是风景，而是和你一起看风景的心情。"
+        ],
+        '温暖': [
+            "你就像冬日里的一缕阳光，温暖了我的心房。",
+            "世界很大，但我的世界很小，小到只能装下一个你。",
+            "遇见你，是我最美的意外。"
         ]
     }
-    
+
+    EMOJI_MAP = {
+        '安慰': ['💕', '🌸', '🌷'],
+        '鼓励': ['💪', '✨', '🌟'],
+        '倾听': ['👂', '💫', '🌙'],
+        '关心': ['☕', '🍵', '🌿'],
+        '浪漫': ['💕', '🌹', '💗'],
+        '思念': ['💭', '🌊', '🍂'],
+        '温暖': ['☀️', '🔥', '🌻']
+    }
+
+    PET_NAMES = ['亲爱的', '宝', '朋友', '']
+
     def __init__(self):
         self.user_profile = {}
-    
-    def analyze_diary(self, content: str, mood_result: Dict) -> str:
-        """
-        分析日记内容，生成 AI 评论
-        
-        Args:
-            content: 日记内容
-            mood_result: 情绪分析结果
-            
-        Returns:
-            AI 分析评论
-        """
+        self.conversation_memory = {}
+
+    def analyze_diary(self, content: str, mood_result: Dict, preferences: Optional[Dict] = None) -> str:
         mood_label = mood_result.get('mood_label', '中性')
         score = mood_result.get('mood_score', 50)
-        
-        # 根据情绪生成回复
+        prefs = {**DEFAULT_PREFERENCES, **(preferences or {})}
+
         if mood_label == '开心':
-            return self._generate_happy_response(content, score)
+            return self._generate_happy_response(content, score, prefs)
         elif mood_label == '焦虑':
-            return self._generate_anxiety_response(content, score)
+            return self._generate_anxiety_response(content, score, prefs)
         elif mood_label == '悲伤':
-            return self._generate_sad_response(content, score)
+            return self._generate_sad_response(content, score, prefs)
         else:
-            return self._generate_neutral_response(content, score)
-    
-    def _generate_happy_response(self, content: str, score: float) -> str:
-        """生成开心情绪的回复"""
-        templates = self.TEMPLATES['鼓励']
-        template = templates[0]
-        
-        # 个性化
-        personal_note = f"看到你这么开心，我也跟着开心起来啦！✨\n你的笑容就像阳光一样温暖。"
-        
-        return f"{template}\n\n{personal_note}"
-    
-    def _generate_anxiety_response(self, content: str, score: float) -> str:
-        """生成焦虑情绪的回复"""
-        templates = self.TEMPLATES['安慰']
-        template = templates[0]
-        
-        # 个性化
-        personal_note = f"亲爱的，别担心~\n焦虑的时候，试着深呼吸，慢慢来。我会一直陪着你。"
-        
-        return f"{template}\n\n{personal_note}"
-    
-    def _generate_sad_response(self, content: str, score: float) -> str:
-        """生成悲伤情绪的回复"""
-        templates = self.TEMPLATES['安慰']
-        template = templates[0]
-        
-        # 个性化
-        personal_note = f"我知道你现在很难过...💔\n但请记住，你的感受很重要，我会一直在这里陪着你。"
-        
-        return f"{template}\n\n{personal_note}"
-    
-    def _generate_neutral_response(self, content: str, score: float) -> str:
-        """生成中性情绪的回复"""
-        templates = self.TEMPLATES['倾听']
-        template = templates[0]
-        
-        # 个性化
-        personal_note = f"谢谢你愿意和我分享。你的每句话都值得被认真对待。"
-        
-        return f"{template}\n\n{personal_note}"
-    
-    def generate_response(self, user_message: str, context: Dict = None, mood: str = 'neutral') -> str:
-        """
-        生成 AI 回复
-        
-        Args:
-            user_message: 用户消息
-            context: 上下文信息
-            mood: 当前情绪状态
-            
-        Returns:
-            AI 生成的回复
-        """
-        mood_label = mood if mood else 'neutral'
-        
-        # 根据情绪选择回复类型
-        if mood_label == '开心':
-            response_type = '鼓励'
-        elif mood_label == '焦虑':
-            response_type = '安慰'
-        elif mood_label == '悲伤':
-            response_type = '安慰'
+            return self._generate_neutral_response(content, score, prefs)
+
+    def _pick_template(self, mood_label: str, prefs: Dict) -> str:
+        style = prefs.get('response_style', 'warm')
+        allowed = STYLE_TEMPLATE_MAP.get(style, STYLE_TEMPLATE_MAP['warm'])
+        return random.choice(self.TEMPLATES.get(mood_label, self.TEMPLATES['倾听']))
+
+    def _apply_emoji(self, text: str, template_type: str, prefs: Dict) -> str:
+        if not prefs.get('use_emoji', True):
+            return text
+        emojis = self.EMOJI_MAP.get(template_type, ['✨'])
+        emoji = random.choice(emojis)
+        return f"{text} {emoji}"
+
+    def _apply_pet_name(self, text: str, prefs: Dict) -> str:
+        name = prefs.get('pet_name', '')
+        if not name or name == '无' or name == '':
+            return text
+        return text.replace('亲爱的', name) if '亲爱的' in text else text
+
+    def _apply_length(self, base: str, personal_note: str, prefs: Dict) -> str:
+        length = prefs.get('response_length', 'medium')
+        if length == 'short':
+            return base
+        elif length == 'long':
+            extra = random.choice([
+                "我会一直在这里，无论何时。",
+                "记住，你永远值得被温柔以待。",
+                "新的一天，新的希望，我们一起加油。"
+            ])
+            return f"{base}\n\n{personal_note}\n\n{extra}"
         else:
-            response_type = '倾听'
-        
-        # 选择模板
-        templates = self.TEMPLATES[response_type]
-        response = templates[0]
-        
-        # 个性化处理
-        response = self._personalize_response(response, user_message)
-        
-        return response
-    
-    def _personalize_response(self, template: str, message: str) -> str:
-        """个性化回复"""
-        # 提取关键词
-        keywords = self._extract_keywords(message)
-        
-        # 添加个性化元素
-        if keywords:
-            personal_note = f"说到 {keywords[0]}，我特别想告诉你..."
-            return template + "\n\n" + personal_note
-        
-        return template
-    
-    def _extract_keywords(self, text: str) -> str:
-        """提取关键词"""
-        # 简单的情感关键词提取
-        keywords = []
-        
-        positive_words = ['开心', '快乐', '幸福', '美好', '温暖']
-        negative_words = ['难过', '累', '压力', '担心', '害怕']
-        
-        for word in positive_words:
-            if word in text:
-                keywords.append(word)
-        
-        for word in negative_words:
-            if word in text:
-                keywords.append(word)
-        
-        return keywords[0] if keywords else '心事'
+            return f"{base}\n\n{personal_note}"
+
+    def _generate_happy_response(self, content: str, score: float, prefs: Dict) -> str:
+        template = self._pick_template('鼓励', prefs)
+        note = f"看到你这么开心，我也跟着开心起来啦！你的笑容就像阳光一样温暖。"
+        result = self._apply_length(template, note, prefs)
+        result = self._apply_emoji(result, '鼓励', prefs)
+        return self._apply_pet_name(result, prefs)
+
+    def _generate_anxiety_response(self, content: str, score: float, prefs: Dict) -> str:
+        template = self._pick_template('安慰', prefs)
+        pname = prefs.get('pet_name', '亲爱的') or ''
+        note = f"{pname}，别担心~ 焦虑的时候，试着深呼吸，慢慢来。我会一直陪着你。" if pname else f"别担心~ 焦虑的时候，试着深呼吸，慢慢来。我会一直陪着你。"
+        result = self._apply_length(template, note, prefs)
+        result = self._apply_emoji(result, '安慰', prefs)
+        return self._apply_pet_name(result, prefs)
+
+    def _generate_sad_response(self, content: str, score: float, prefs: Dict) -> str:
+        template = self._pick_template('安慰', prefs)
+        note = f"我知道你现在很难过... 但请记住，你的感受很重要，我会一直在这里陪着你。"
+        result = self._apply_length(template, note, prefs)
+        result = self._apply_emoji(result, '安慰', prefs)
+        return self._apply_pet_name(result, prefs)
+
+    def _generate_neutral_response(self, content: str, score: float, prefs: Dict) -> str:
+        template = self._pick_template('倾听', prefs)
+        note = f"谢谢你愿意和我分享。你的每句话都值得被认真对待。"
+        result = self._apply_length(template, note, prefs)
+        result = self._apply_emoji(result, '倾听', prefs)
+        return self._apply_pet_name(result, prefs)
+
+    def generate_response(
+        self,
+        user_message: str,
+        history: Optional[List[Dict]] = None,
+        mood: str = 'neutral',
+        preferences: Optional[Dict] = None
+    ) -> str:
+        history = history or []
+        prefs = {**DEFAULT_PREFERENCES, **(preferences or {})}
+        turn_count = len([h for h in history if h['role'] == 'user'])
+
+        response_type = self._determine
