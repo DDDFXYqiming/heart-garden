@@ -33,7 +33,20 @@ class LLMService:
 
     def is_llm_configured(self, user_llm_config: Optional[Dict] = None) -> bool:
         config = self._merge_config(user_llm_config)
-        return config.get("enabled", False) and bool(config.get("api_key")) and bool(config.get("base_url"))
+        configured = (
+            bool(config.get("enabled", False))
+            and bool(config.get("api_key"))
+            and bool(config.get("base_url"))
+        )
+        logger.info(
+            "LLM configured=%s enabled=%s api_key_set=%s base_url_set=%s model=%s",
+            configured,
+            bool(config.get("enabled", False)),
+            bool(config.get("api_key")),
+            bool(config.get("base_url")),
+            config.get("model") or "-"
+        )
+        return configured
 
     def _merge_config(self, user_config: Optional[Dict] = None) -> Dict:
         config = dict(DEFAULT_LLM_CONFIG)
@@ -66,8 +79,19 @@ class LLMService:
                 api_key=config["api_key"],
                 base_url=config["base_url"]
             )
+            logger.info(
+                "LLM provider created model=%s base_url_set=%s cache_size=%s",
+                config.get("model") or "-",
+                bool(config.get("base_url")),
+                len(self._provider_cache)
+            )
         else:
             self._provider_cache.move_to_end(cache_key)
+            logger.debug(
+                "LLM provider cache hit model=%s cache_size=%s",
+                config.get("model") or "-",
+                len(self._provider_cache)
+            )
         return self._provider_cache[cache_key]
 
     def chat(
@@ -80,6 +104,12 @@ class LLMService:
         config = self._merge_config(user_config)
         provider = self._get_provider(user_config)
         temp = temperature if temperature is not None else config.get("temperature", 0.7)
+        logger.info(
+            "LLM chat start messages=%s temperature=%s max_tokens=%s",
+            len(messages),
+            temp,
+            max_tokens
+        )
         try:
             response = provider.chat(
                 messages,
@@ -87,11 +117,17 @@ class LLMService:
                 max_tokens=max_tokens,
                 stream=False
             )
-            logger.info(f"LLM response: {len(response.content)} chars, model={response.model}")
+            content_len = len(response.content or "")
+            logger.info(
+                "LLM chat success chars=%s finish_reason=%s usage=%s",
+                content_len,
+                response.finish_reason,
+                response.usage or {}
+            )
             return True, response, None
         except Exception as e:
             error_msg = f"LLM call failed: {e}"
-            logger.error(error_msg)
+            logger.exception("LLM chat failed error=%s", e)
             return False, None, error_msg
 
     def chat_with_fallback(
@@ -103,6 +139,7 @@ class LLMService:
         user_preferences: Optional[Dict] = None
     ) -> Tuple[bool, str, str]:
         if not self.is_llm_configured(user_config):
+            logger.info("LLM fallback skipped reason=not_configured")
             return False, "", "rule_engine"
 
         config = self._merge_config(user_config)
@@ -127,9 +164,10 @@ class LLMService:
 
         success, response, error = self.chat(messages, user_config=user_config)
         if success and response:
+            logger.info("LLM fallback result=llm chars=%s", len(response.content or ""))
             return True, response.content, "llm"
         else:
-            logger.warning(f"LLM failed, falling back to rule engine: {error}")
+            logger.warning("LLM failed, falling back to rule engine: %s", error)
             return False, "", "rule_engine"
 
     def chat_stream(
@@ -142,6 +180,7 @@ class LLMService:
     ) -> Generator[str, None, None]:
         """流式对话，逐 token 返回"""
         if not self.is_llm_configured(user_config):
+            logger.info("LLM stream skipped reason=not_configured")
             return
 
         config = self._merge_config(user_config)
@@ -163,16 +202,38 @@ class LLMService:
 
         provider = self._get_provider(user_config)
         temp = config.get("temperature", 0.7)
+        chunk_count = 0
+        char_count = 0
+        logger.info(
+            "LLM stream start messages=%s temperature=%s max_tokens=%s",
+            len(messages),
+            temp,
+            1024
+        )
         try:
             for chunk in provider.chat_stream(messages, temperature=temp, max_tokens=1024):
+                chunk_count += 1
+                char_count += len(chunk or "")
                 yield chunk
+            logger.info(
+                "LLM stream success chunks=%s chars=%s",
+                chunk_count,
+                char_count
+            )
         except Exception as e:
-            logger.error(f"LLM stream failed: {e}")
+            logger.exception("LLM stream failed error=%s", e)
             return
 
     def test_connection(self, user_config: Optional[Dict] = None) -> Dict:
         config = self._merge_config(user_config)
+        logger.info(
+            "LLM test_connection start api_key_set=%s base_url_set=%s model=%s",
+            bool(config.get("api_key")),
+            bool(config.get("base_url")),
+            config.get("model") or "-"
+        )
         if not config.get("api_key") or not config.get("base_url"):
+            logger.warning("LLM test_connection failed reason=missing_config")
             return {
                 "success": False,
                 "message": "API Key and Base URL are required"
@@ -182,7 +243,13 @@ class LLMService:
             api_key=config["api_key"],
             base_url=config["base_url"]
         )
-        return provider.test_connection()
+        result = provider.test_connection()
+        logger.info(
+            "LLM test_connection result success=%s message=%s",
+            result.get("success"),
+            result.get("message")
+        )
+        return result
 
     def clear_cache(self):
         self._provider_cache.clear()
@@ -206,7 +273,8 @@ def parse_llm_config(raw: Optional[str]) -> Dict:
         merged = dict(DEFAULT_LLM_CONFIG)
         merged.update(config)
         return merged
-    except (json.JSONDecodeError, TypeError):
+    except (json.JSONDecodeError, TypeError) as e:
+        logger.warning("LLM config parse failed error=%s", e)
         return dict(DEFAULT_LLM_CONFIG)
 
 

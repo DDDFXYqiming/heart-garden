@@ -41,6 +41,13 @@ class OpenAICompatibleProvider(LLMInterface):
             {"role": msg.role, "content": msg.content}
             for msg in messages
         ]
+        logger.info(
+            "OpenAI-compatible chat request model=%s messages=%s stream=%s max_tokens=%s",
+            self.model_name,
+            len(openai_messages),
+            stream,
+            max_tokens
+        )
 
         response = client.chat.completions.create(
             model=self.model_name,
@@ -59,6 +66,13 @@ class OpenAICompatibleProvider(LLMInterface):
             }
             if response.usage
             else None
+        )
+        logger.info(
+            "OpenAI-compatible chat response model=%s chars=%s finish_reason=%s usage=%s",
+            self.model_name,
+            len(content or ""),
+            response.choices[0].finish_reason,
+            usage or {}
         )
 
         return ChatResponse(
@@ -79,6 +93,12 @@ class OpenAICompatibleProvider(LLMInterface):
             {"role": msg.role, "content": msg.content}
             for msg in messages
         ]
+        logger.info(
+            "OpenAI-compatible stream request model=%s messages=%s max_tokens=%s",
+            self.model_name,
+            len(openai_messages),
+            max_tokens
+        )
 
         response = client.chat.completions.create(
             model=self.model_name,
@@ -88,11 +108,21 @@ class OpenAICompatibleProvider(LLMInterface):
             stream=True
         )
 
+        chunk_count = 0
+        char_count = 0
         for chunk in response:
             if chunk.choices and chunk.choices[0].delta:
                 delta = chunk.choices[0].delta
                 if delta.content:
+                    chunk_count += 1
+                    char_count += len(delta.content)
                     yield delta.content
+        logger.info(
+            "OpenAI-compatible stream response model=%s chunks=%s chars=%s",
+            self.model_name,
+            chunk_count,
+            char_count
+        )
 
     def get_model_info(self) -> Dict:
         return {
@@ -104,18 +134,21 @@ class OpenAICompatibleProvider(LLMInterface):
 
     def test_connection(self) -> Dict:
         try:
+            logger.info("OpenAI-compatible test_connection start model=%s", self.model_name)
             client = self._get_client()
             response = client.chat.completions.create(
                 model=self.model_name,
                 messages=[{"role": "user", "content": "hi"}],
                 max_tokens=5
             )
+            logger.info("OpenAI-compatible test_connection success model=%s", self.model_name)
             return {
                 "success": True,
                 "model": self.model_name,
                 "message": "Connection successful"
             }
         except Exception as e:
+            logger.exception("OpenAI-compatible test_connection failed model=%s error=%s", self.model_name, e)
             return {
                 "success": False,
                 "model": self.model_name,

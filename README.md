@@ -50,6 +50,9 @@ Heart Garden 是一个基于 AI 驱动的情感陪伴应用，为用户提供深
 6. **共享常量** (constants.py)
    - 模板词库、表情映射、情绪关键词
 
+7. **日志系统** (app/__init__.py + 服务日志)
+   - stdout/file 双通道输出、请求 ID、请求耗时、LLM 调用/降级追踪
+
 ## 核心功能
 
 ### 1. 用户系统
@@ -197,6 +200,15 @@ npm run dev
 - main.py 1468行 → 27行精简入口
 - Flask factory pattern (create_app)
 - 模块化拆分：db.py / auth.py / 9个路由模块
+
+### ✅ v3.0.1 - 启动热修复
+- 修复 Flask factory 重构后 init_db() 缺少 app context 导致启动崩溃的问题
+
+### ✅ v3.0.2 - 日志系统增强
+- setup_logging 增加 stdout StreamHandler，Zeabur/Docker Runtime Logs 可见
+- 每个请求生成 X-Request-ID，记录方法、路径、状态码、耗时、用户 ID
+- LLM 配置检查、调用结果、流式响应、失败降级原因均进入日志
+- 新增日志回归测试，覆盖日志幂等、请求 ID、SSE 流式上下文
 
 ## API 接口
 

@@ -4,7 +4,8 @@ AI 对话 + SSE 流式 API 路由
 
 import uuid
 import json
-from flask import Blueprint, request, jsonify, g, current_app
+import time
+from flask import Blueprint, request, jsonify, g, current_app, stream_with_context
 from ..db import query_db, execute_db
 from ..auth import require_auth, _analyze_with_custom_words
 from services.llm_service import parse_llm_config
@@ -73,8 +74,17 @@ def chat():
 
     llm_service = current_app.llm_service
     ai_companion = current_app.ai_companion
+    llm_configured = llm_service.is_llm_configured(user_llm_config)
+    logger.info(
+        "chat request conv=%s chars=%s history=%s mood=%s llm_configured=%s",
+        conversation_id,
+        len(user_message),
+        len(history_list),
+        mood_result['mood_label'],
+        llm_configured
+    )
 
-    if llm_service.is_llm_configured(user_llm_config):
+    if llm_configured:
         mood_ctx = MoodContext(
             mood_label=mood_result['mood_label'],
             mood_score=mood_result['mood_score'],
@@ -89,6 +99,17 @@ def chat():
         if llm_success:
             response = llm_response
             response_mode = "llm"
+            logger.info(
+                "chat llm result success=true conv=%s response_chars=%s",
+                conversation_id,
+                len(response or "")
+            )
+        else:
+            logger.warning(
+                "chat llm result success=false conv=%s fallback=rule_engine source=%s",
+                conversation_id,
+                source
+            )
 
     if response is None:
         response = ai_companion.generate_response(
@@ -115,7 +136,13 @@ def chat():
         WHERE id = ? AND user_id = ?
         ''', (conversation_id, g.current_user_id))
 
-    logger.debug(f"Chat: {len(user_message)} chars, mode={response_mode}, conv={conversation_id}")
+    logger.info(
+        "chat response conv=%s mode=%s response_chars=%s mood=%s",
+        conversation_id,
+        response_mode,
+        len(response or ""),
+        mood_result['mood_label']
+    )
     return jsonify({
         'success': True,
         'data': {
@@ -182,12 +209,23 @@ def chat_stream():
 
     llm_service = current_app.llm_service
     ai_companion = current_app.ai_companion
+    current_user_id = g.current_user_id
+    llm_configured = llm_service.is_llm_configured(user_llm_config)
+    logger.info(
+        "chat_stream request conv=%s chars=%s history=%s mood=%s llm_configured=%s",
+        conversation_id,
+        len(user_message),
+        len(history_list),
+        mood_result['mood_label'],
+        llm_configured
+    )
 
     def generate():
+        stream_start = time.perf_counter()
         full_response = []
         response_mode = "rule_engine"
 
-        if llm_service.is_llm_configured(user_llm_config):
+        if llm_configured:
             response_mode = "llm"
             mood_ctx = MoodContext(
                 mood_label=mood_result['mood_label'],
@@ -204,8 +242,14 @@ def chat_stream():
                     full_response.append(chunk)
                     yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
             except Exception as e:
-                logger.error(f"Stream error: {e}")
+                logger.exception("chat_stream LLM exception conv=%s error=%s", conversation_id, e)
                 response_mode = "rule_engine"
+
+        if llm_configured and not full_response:
+            logger.warning(
+                "chat_stream LLM empty result conv=%s fallback=rule_engine",
+                conversation_id
+            )
 
         if not full_response:
             response_mode = "rule_engine"
@@ -213,6 +257,11 @@ def chat_stream():
                 user_message, history=history_list, mood=mood_result['mood_label']
             )
             full_response = [response]
+            logger.info(
+                "chat_stream rule_engine response conv=%s response_chars=%s",
+                conversation_id,
+                len(response or "")
+            )
             yield f"data: {json.dumps({'type': 'chunk', 'content': response}, ensure_ascii=False)}\n\n"
 
         final_text = ''.join(full_response)
@@ -225,12 +274,12 @@ def chat_stream():
             execute_db('''
             UPDATE conversations SET title = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ? AND user_id = ?
-            ''', (user_message[:50], conversation_id, g.current_user_id))
+            ''', (user_message[:50], conversation_id, current_user_id))
         else:
             execute_db('''
             UPDATE conversations SET updated_at = CURRENT_TIMESTAMP
             WHERE id = ? AND user_id = ?
-            ''', (conversation_id, g.current_user_id))
+            ''', (conversation_id, current_user_id))
 
         meta = {
             'type': 'done',
@@ -238,10 +287,17 @@ def chat_stream():
             'mood': mood_result['mood_label'],
             'response_mode': response_mode
         }
+        logger.info(
+            "chat_stream done conv=%s mode=%s response_chars=%s duration_ms=%.1f",
+            conversation_id,
+            response_mode,
+            len(final_text or ""),
+            (time.perf_counter() - stream_start) * 1000
+        )
         yield f"data: {json.dumps(meta, ensure_ascii=False)}\n\n"
 
     return current_app.response_class(
-        generate(),
+        stream_with_context(generate()),
         mimetype='text/event-stream',
         headers={
             'Cache-Control': 'no-cache',
