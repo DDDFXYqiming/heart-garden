@@ -345,7 +345,7 @@ def init_db():
 
         conn.commit()
         conn.close()
-        logger.info("Database initialized successfully")
+        logger.debug("Database initialized successfully")
     except Exception as e:
         logger.error(f"Database initialization failed: {e}")
         raise
@@ -632,7 +632,7 @@ def get_diaries():
     LIMIT ? OFFSET ?
     ''', (g.current_user_id, per_page, (page - 1) * per_page))
 
-    logger.info(f"Get diaries: page={page}, total={total['count']}, user={g.current_user_id}")
+    logger.debug(f"Get diaries: page={page}, total={total['count']}, user={g.current_user_id}")
     return jsonify({
         'success': True,
         'data': {
@@ -971,7 +971,7 @@ def chat():
         WHERE id = ? AND user_id = ?
         ''', (conversation_id, g.current_user_id))
 
-    logger.info(f"Chat: {len(user_message)} chars, mode={response_mode}, conv={conversation_id}")
+    logger.debug(f"Chat: {len(user_message)} chars, mode={response_mode}, conv={conversation_id}")
     return jsonify({
         'success': True,
         'data': {

@@ -6,6 +6,7 @@
 import os
 import json
 import logging
+from collections import OrderedDict
 from typing import Dict, List, Optional, Tuple, Generator
 
 from .interface.llm_interface import LLMInterface, Message, ChatResponse
@@ -25,8 +26,10 @@ DEFAULT_LLM_CONFIG = {
 
 class LLMService:
 
+    _MAX_CACHE = 10
+
     def __init__(self):
-        self._provider_cache: Dict[str, LLMInterface] = {}
+        self._provider_cache: OrderedDict[str, LLMInterface] = OrderedDict()
 
     def is_llm_configured(self, user_llm_config: Optional[Dict] = None) -> bool:
         config = self._merge_config(user_llm_config)
@@ -56,11 +59,15 @@ class LLMService:
         config = self._merge_config(user_config)
         cache_key = self._get_cache_key(config)
         if cache_key not in self._provider_cache:
+            if len(self._provider_cache) >= self._MAX_CACHE:
+                self._provider_cache.popitem(last=False)  # LRU 淘汰
             self._provider_cache[cache_key] = OpenAICompatibleProvider(
                 model_name=config["model"],
                 api_key=config["api_key"],
                 base_url=config["base_url"]
             )
+        else:
+            self._provider_cache.move_to_end(cache_key)
         return self._provider_cache[cache_key]
 
     def chat(
