@@ -127,11 +127,11 @@ npm run dev
 ```
 
 - 后端：http://localhost:5000
-- 前端：http://localhost:3000
+- 前端：http://localhost:3001
 
 ### 配置大模型 (可选)
 
-1. 启动项目后访问 http://localhost:3000/#/settings
+1. 启动项目后访问 http://localhost:3001/#/settings
 2. 找到「AI 对话模式」板块
 3. 勾选「启用大模型对话」
 4. 填入 API 基础 URL（如 `https://api.deepseek.com/v1`）和 API Key

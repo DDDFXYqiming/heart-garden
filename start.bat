@@ -63,7 +63,7 @@ start "HeartGarden-Backend" cmd /k "cd /d %CD% && call venv\Scripts\activate.bat
 timeout /t 3 /nobreak >nul
 echo.
 echo ========================================
-echo    Starting Frontend (port 3000)...
+echo    Starting Frontend (port 3001)...
 echo ========================================
 start "HeartGarden-Frontend" cmd /k "cd /d %CD%\frontend && npm run dev"
 timeout /t 3 /nobreak >nul
@@ -71,12 +71,12 @@ echo.
 echo ========================================
 echo    Opening Browser...
 echo ========================================
-start http://localhost:3000
+start http://localhost:3001
 echo.
 echo ========================================
 echo    All services started!
 echo    Backend:  http://localhost:5000
-echo    Frontend: http://localhost:3000
+echo    Frontend: http://localhost:3001
 echo ========================================
 echo.
 echo.
