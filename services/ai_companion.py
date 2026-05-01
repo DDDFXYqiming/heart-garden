@@ -164,4 +164,113 @@ class AICompanion:
         prefs = {**DEFAULT_PREFERENCES, **(preferences or {})}
         turn_count = len([h for h in history if h['role'] == 'user'])
 
-        response_type = self._determine
+        response_type = self._determine_response_type(mood, user_message)
+        base_response = self._pick_template(response_type, prefs)
+
+        context_note = self._build_context_note(history, user_message, turn_count)
+        if context_note:
+            result = f"{base_response}\n\n{context_note}"
+        else:
+            personalized = self._personalize_response(base_response, user_message, mood)
+            result = personalized
+
+        result = self._apply_emoji(result, response_type, prefs)
+        return self._apply_pet_name(result, prefs)
+
+    def _determine_response_type(self, mood: str, message: str) -> str:
+        mood_map = {
+            '开心': '鼓励',
+            '平静': '温暖',
+            '期待': '鼓励',
+            '爱': '浪漫',
+            '感激': '温暖',
+            '焦虑': '安慰',
+            '悲伤': '安慰',
+            '愤怒': '安慰',
+            '疲惫': '关心'
+        }
+
+        if mood in mood_map:
+            return mood_map[mood]
+
+        question_words = ['吗', '什么', '怎么', '为什么', '如何', '是否', '能不能']
+        if any(w in message for w in question_words):
+            return '倾听'
+
+        gratitude_words = ['谢谢', '感谢', '感恩']
+        if any(w in message for w in gratitude_words):
+            return '温暖'
+
+        longing_words = ['想', '思念', '怀念', '牵挂']
+        if any(w in message for w in longing_words):
+            return '思念'
+
+        return '倾听'
+
+    def _build_context_note(
+        self,
+        history: List[Dict],
+        current_message: str,
+        turn_count: int
+    ) -> Optional[str]:
+        if turn_count <= 1:
+            return None
+
+        user_messages = [h['content'] for h in history if h['role'] == 'user']
+
+        if len(user_messages) >= 2:
+            prev_topic = self._extract_topic(user_messages[-2])
+            current_topic = self._extract_topic(current_message)
+
+            if prev_topic and current_topic and prev_topic == current_topic:
+                return f"你刚才提到的「{prev_topic}」，我想再和你多聊聊这个。能告诉我更多你的想法吗？"
+
+            if prev_topic:
+                return f"从刚才的「{prev_topic}」到现在说的「{current_topic}」，感觉你心里有很多话想说呢～我都在听哦。"
+
+            return "我感觉到你还在继续分享你的心情，真好～我会一直在这里陪着你。"
+
+        return None
+
+    def _extract_topic(self, text: str) -> Optional[str]:
+        topic_markers = ['关于', '说到', '提到', '今天', '最近', '昨天', '明天']
+        for marker in topic_markers:
+            if marker in text:
+                idx = text.find(marker)
+                return text[idx:idx + 15]
+
+        if len(text) >= 4:
+            keywords = self._extract_keywords(text)
+            if keywords:
+                return keywords[0]
+
+        return None
+
+    def _personalize_response(self, template: str, message: str, mood: str) -> str:
+        keywords = self._extract_keywords(message)
+
+        if keywords:
+            if mood in ('焦虑', '悲伤', '疲惫'):
+                return f"{template}\n\n我注意到你提到了「{keywords[0]}」，想和我多说一些吗？我在这里听着呢。"
+            elif mood in ('开心', '爱', '感激'):
+                return f"{template}\n\n说到「{keywords[0]}」，我能感受到你此刻的心情，真为你开心！"
+            else:
+                return f"{template}\n\n你提到了「{keywords[0]}」，感觉这对你很重要呢。可以和我多分享一些吗？"
+
+        return template
+
+    def _extract_keywords(self, text: str) -> List[str]:
+        keywords = []
+
+        positive_words = ['开心', '快乐', '幸福', '美好', '温暖', '爱', '喜欢', '感谢']
+        negative_words = ['难过', '累', '压力', '担心', '害怕', '孤独', '寂寞', '焦虑']
+
+        for word in positive_words:
+            if word in text:
+                keywords.append(word)
+
+        for word in negative_words:
+            if word in text:
+                keywords.append(word)
+
+        return keywords[:3]

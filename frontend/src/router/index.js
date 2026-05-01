@@ -19,14 +19,18 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to, from, next) => {
-  const token = localStorage.getItem('token')
-  const publicPages = ['Home', 'Login', 'Register']
-  if (!token && !publicPages.includes(to.name)) {
-    next({ name: 'Login' })
-  } else {
-    next()
-  }
-})
+// ========================================
+// 路由守卫 - 开发阶段已禁用
+// 启用时取消下方注释，并注释掉 router.afterEach
+// ========================================
+// router.beforeEach((to, from, next) => {
+//   const token = localStorage.getItem('token')
+//   const publicPages = ['Home', 'Login', 'Register']
+//   if (!token && !publicPages.includes(to.name)) {
+//     next({ name: 'Login' })
+//   } else {
+//     next()
+//   }
+// })
 
 export default router

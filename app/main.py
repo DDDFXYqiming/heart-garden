@@ -54,6 +54,10 @@ app.config['DATABASE'] = os.getenv('DATABASE_PATH', 'heart_garden.db')
 app.config['JWT_SECRET'] = os.getenv('JWT_SECRET', 'heart-garden-jwt-secret-2026')
 app.config['JWT_EXPIRATION_HOURS'] = 168
 
+# 开发模式：设置为 True 时不需要 token 即可访问所有接口
+# 设为 False 后恢复 JWT 认证，需要登录获取 token
+DEV_MODE = True
+
 mood_analyzer = MoodAnalyzer()
 ai_companion = AICompanion()
 
@@ -108,19 +112,23 @@ def require_auth(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        if token:
+            user_id = verify_token(token)
+            if user_id:
+                g.current_user_id = user_id
+                return f(*args, **kwargs)
+        if DEV_MODE:
+            g.current_user_id = 'dev-user'
+            return f(*args, **kwargs)
         if not token:
             return jsonify({
                 'success': False,
                 'error': {'code': 401, 'message': '未提供认证令牌'}
             }), 401
-        user_id = verify_token(token)
-        if not user_id:
-            return jsonify({
-                'success': False,
-                'error': {'code': 401, 'message': '令牌无效或已过期'}
-            }), 401
-        g.current_user_id = user_id
-        return f(*args, **kwargs)
+        return jsonify({
+            'success': False,
+            'error': {'code': 401, 'message': '令牌无效或已过期'}
+        }), 401
     return decorated
 
 # ==================== 统一错误处理 ====================
@@ -269,6 +277,12 @@ def init_db():
         cursor.execute('''
         CREATE INDEX IF NOT EXISTS idx_custom_words_user ON custom_words(user_id)
         ''')
+
+        if DEV_MODE:
+            cursor.execute('''
+            INSERT OR IGNORE INTO users (id, username, email, password_hash)
+            VALUES ('dev-user', '开发用户', 'dev@heart-garden.local', 'dev-mode-no-auth')
+            ''')
 
         conn.commit()
         conn.close()
