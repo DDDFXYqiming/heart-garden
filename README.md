@@ -79,6 +79,7 @@ Heart Garden 是一个基于 AI 驱动的情感陪伴应用，为用户提供深
 ### 5. 设置与配置
 - AI 对话模式切换（规则/大模型）
 - LLM 配置管理（URL、API Key、模型、温度）
+- API Key 安全回显：设置页重新进入时不泄露、不覆盖已保存密钥
 - 连接测试功能
 - 自定义情绪词库管理
 
@@ -214,6 +215,13 @@ npm run dev
 - 修复 ChatPage 调用 chatStream 但未导入导致的运行时 ReferenceError
 - chatStream 增加 HTTP 状态与 ReadableStream body 校验，错误进入浏览器控制台
 - 新增前端契约回归测试，防止流式调用导入再次缺失
+
+### ✅ v3.0.4 - 设置页 API Key 保留修复
+- 设置页不再把后端脱敏 API Key 绑定到可提交字段，避免掩码覆盖真实密钥
+- 保存 LLM 配置时，api_key 缺省或为掩码占位符则沿用数据库已有密钥
+- 测试连接未输入新 API Key 时自动使用已保存密钥
+- GET/POST LLM 配置响应不回传真实 API Key，仅返回已保存状态与脱敏预览
+- 新增 LLM 配置回归测试与设置页前端契约测试
 
 ## API 接口
 

@@ -267,3 +267,98 @@ class TestConversationAPI:
         assert resp.status_code == 200
         assert data['success'] is True
         assert len(data['data']['messages']) >= 2  # user + assistant
+
+
+class TestLLMConfigAPI:
+    def setup_method(self):
+        self.client = app.test_client()
+        suffix = _unique()
+        self.username = f'llm_{suffix}'
+        self.email = f'llm_{suffix}@test.com'
+        self.client.post('/api/auth/register', json={
+            'username': self.username, 'email': self.email, 'password': 'test123'
+        })
+        login_resp = self.client.post('/api/auth/login', json={
+            'username': self.username, 'email': self.email, 'password': 'test123'
+        })
+        self.token = json.loads(login_resp.data)['data']['token']
+
+    def _auth(self):
+        return {'Authorization': f'Bearer {self.token}'}
+
+    def _save_real_config(self, api_key='unit-test-api-key-v304'):
+        resp = self.client.post('/api/llm/config', json={
+            'enabled': True,
+            'base_url': 'https://api.deepseek.com/v1',
+            'api_key': api_key,
+            'model': 'deepseek-chat',
+            'temperature': 0.7
+        }, headers=self._auth())
+        assert resp.status_code == 200
+        return api_key
+
+    def test_llm_config_get_does_not_leak_real_api_key(self):
+        real_key = self._save_real_config()
+
+        resp = self.client.get('/api/llm/config', headers=self._auth())
+        data = json.loads(resp.data)
+
+        assert resp.status_code == 200
+        assert data['success'] is True
+        assert real_key not in json.dumps(data, ensure_ascii=False)
+        assert data['data']['api_key'] == ''
+        assert data['data']['api_key_saved'] is True
+        assert data['data']['api_key_preview'].endswith('****')
+
+    def test_save_llm_config_preserves_saved_api_key_when_omitted_or_masked(self, monkeypatch):
+        real_key = self._save_real_config()
+
+        for api_key_payload in [None, 'unit-test****', '••••••••']:
+            payload = {
+                'enabled': True,
+                'base_url': 'https://api.deepseek.com/v1',
+                'model': 'deepseek-chat',
+                'temperature': 0.8
+            }
+            if api_key_payload is not None:
+                payload['api_key'] = api_key_payload
+
+            save_resp = self.client.post('/api/llm/config', json=payload, headers=self._auth())
+            assert save_resp.status_code == 200
+
+            captured = {}
+
+            def fake_test_connection(config):
+                captured.update(config)
+                return {'success': True, 'model': config['model'], 'message': 'ok'}
+
+            monkeypatch.setattr(app.llm_service, 'test_connection', fake_test_connection)
+            test_resp = self.client.post('/api/llm/test', json={
+                'base_url': 'https://api.deepseek.com/v1',
+                'model': 'deepseek-chat'
+            }, headers=self._auth())
+            test_data = json.loads(test_resp.data)
+
+            assert test_resp.status_code == 200
+            assert test_data['data']['success'] is True
+            assert captured['api_key'] == real_key
+
+    def test_llm_test_uses_new_unsaved_api_key_when_provided(self, monkeypatch):
+        self._save_real_config(api_key='saved-unit-test-key')
+        captured = {}
+
+        def fake_test_connection(config):
+            captured.update(config)
+            return {'success': True, 'model': config['model'], 'message': 'ok'}
+
+        monkeypatch.setattr(app.llm_service, 'test_connection', fake_test_connection)
+        resp = self.client.post('/api/llm/test', json={
+            'base_url': 'https://api.deepseek.com/v1',
+            'api_key': 'unsaved-unit-test-key',
+            'model': 'deepseek-chat'
+        }, headers=self._auth())
+        data = json.loads(resp.data)
+
+        assert resp.status_code == 200
+        assert data['data']['success'] is True
+        assert captured['api_key'] == 'unsaved-unit-test-key'

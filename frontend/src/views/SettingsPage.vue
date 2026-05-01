@@ -37,10 +37,11 @@
 
         <div>
           <label class="block text-sm font-bold mb-1">API Key</label>
-          <input v-model="llmConfig.api_key" type="password"
+          <input v-model="apiKeyInput" type="password"
             class="w-full px-3 py-2 text-base border-[2px] border-pencil bg-white wobbly-sm focus:border-pen-blue focus:ring-2 outline-none"
-            placeholder="sk-...">
-          <p v-if="llmConfig.api_key && llmConfig.api_key.includes('****')" class="text-xs text-pencil/50 mt-1">已保存，留空则保持不变</p>
+            :placeholder="hasSavedApiKey ? '已保存，留空保持不变' : 'sk-...'"
+            autocomplete="off">
+          <p v-if="hasSavedApiKey" class="text-xs text-pencil/50 mt-1">已保存，留空则保持不变</p>
         </div>
 
         <div>
@@ -125,10 +126,11 @@ const newWord = reactive({ word: '', word_type: 'positive' })
 const llmConfig = reactive({
   enabled: false,
   base_url: '',
-  api_key: '',
   model: 'deepseek-chat',
   temperature: 0.7
 })
+const apiKeyInput = ref('')
+const hasSavedApiKey = ref(false)
 const testing = ref(false)
 const saving = ref(false)
 const testResult = ref(null)
@@ -169,21 +171,35 @@ async function fetchLLMConfig() {
   try {
     const res = await getLLMConfig()
     if (res.data) {
-      Object.assign(llmConfig, res.data)
+      const { api_key, api_key_saved, api_key_preview, ...safeConfig } = res.data
+      Object.assign(llmConfig, safeConfig)
+      hasSavedApiKey.value = Boolean(api_key_saved || api_key_preview || api_key?.includes('****'))
+      apiKeyInput.value = ''
     }
   } catch {
     // keep defaults
   }
 }
 
+function buildLLMPayload() {
+  const payload = { ...llmConfig }
+  const key = apiKeyInput.value.trim()
+  if (key) {
+    payload.api_key = key
+  }
+  return payload
+}
+
 async function testConnection() {
   testing.value = true
   testResult.value = null
   try {
+    const payload = buildLLMPayload()
     const res = await testLLMConnection({
-      base_url: llmConfig.base_url,
-      api_key: llmConfig.api_key,
-      model: llmConfig.model
+      base_url: payload.base_url,
+      api_key: payload.api_key,
+      model: payload.model,
+      temperature: payload.temperature
     })
     testResult.value = res.data
   } catch (err) {
@@ -197,11 +213,13 @@ async function saveConfig() {
   saving.value = true
   saveSuccess.value = false
   try {
-    const payload = { ...llmConfig }
-    if (payload.api_key && payload.api_key.includes('****')) {
-      delete payload.api_key
+    const res = await saveLLMConfig(buildLLMPayload())
+    if (res.data) {
+      const { api_key, api_key_saved, api_key_preview, ...safeConfig } = res.data
+      Object.assign(llmConfig, safeConfig)
+      hasSavedApiKey.value = Boolean(api_key_saved || api_key_preview || api_key?.includes('****'))
+      apiKeyInput.value = ''
     }
-    await saveLLMConfig(payload)
     saveSuccess.value = true
     setTimeout(() => { saveSuccess.value = false }, 3000)
   } catch (err) {

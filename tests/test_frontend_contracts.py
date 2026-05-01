@@ -8,12 +8,13 @@ import re
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CHAT_PAGE = PROJECT_ROOT / "frontend" / "src" / "views" / "ChatPage.vue"
+SETTINGS_PAGE = PROJECT_ROOT / "frontend" / "src" / "views" / "SettingsPage.vue"
 API_INDEX = PROJECT_ROOT / "frontend" / "src" / "api" / "index.js"
 
 
 def _script_setup(source: str) -> str:
     match = re.search(r"<script setup>(.*?)</script>", source, re.S)
-    assert match, "ChatPage.vue 必须包含 <script setup>"
+    assert match, "Vue 文件必须包含 <script setup>"
     return match.group(1)
 
 
@@ -34,3 +35,15 @@ def test_api_chat_stream_checks_response_before_returning_body():
     assert "if (!response.ok)" in source
     assert "if (!response.body)" in source
     assert "return response" in source
+
+
+def test_settings_page_does_not_bind_masked_api_key_to_submit_payload():
+    """设置页 API Key 输入必须与后端脱敏回显分离，避免把掩码当真实密钥提交。"""
+    source = SETTINGS_PAGE.read_text(encoding="utf-8")
+    script = _script_setup(source)
+
+    assert 'v-model="apiKeyInput"' in source
+    assert 'v-model="llmConfig.api_key"' not in source
+    assert "apiKeyInput.value.trim()" in script
+    assert "payload.api_key = key" in script
+    assert "const { api_key, api_key_saved, api_key_preview, ...safeConfig }" in script
