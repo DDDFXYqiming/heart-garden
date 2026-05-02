@@ -16,22 +16,7 @@
     </div>
 
     <div v-else class="space-y-4">
-      <div v-for="d in diaries" :key="d.id" class="bg-white border-[3px] border-pencil p-5 wobbly-md shadow-hard-sm card-hover relative">
-        <div class="flex items-start justify-between">
-          <div class="flex-1">
-            <h2 class="text-xl" style="font-family: 'Kalam', cursive; font-weight: 700;">{{ d.title }}</h2>
-            <p class="text-base text-pencil/70 mt-1">{{ d.content.slice(0, 120) }}{{ d.content.length > 120 ? '...' : '' }}</p>
-            <div class="flex items-center gap-3 mt-3">
-              <span class="px-3 py-0.5 text-sm border-[2px] border-pencil wobbly-sm">{{ d.mood_label }}</span>
-              <span class="text-sm text-pencil/50">{{ d.created_at }}</span>
-            </div>
-          </div>
-          <div class="flex gap-2 ml-4">
-            <router-link :to="`/diary/${d.id}`" class="px-3 py-1 text-sm border-[2px] border-pencil bg-white shadow-hard hover:shadow-hard-hover hover:translate-x-[1px] hover:translate-y-[1px] active:shadow-none transition-all wobbly-sm no-underline text-pencil">编辑</router-link>
-            <button @click="handleDelete(d.id)" class="px-3 py-1 text-sm border-[2px] border-pencil bg-white shadow-hard hover:shadow-hard-hover hover:translate-x-[1px] hover:translate-y-[1px] active:shadow-none transition-all wobbly-sm">删除</button>
-          </div>
-        </div>
-      </div>
+      <DiaryCard v-for="d in diaries" :key="d.id" :diary="d" :showActions="true" @delete="handleDelete" />
     </div>
   </div>
 </template>
@@ -39,6 +24,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { getDiaries, deleteDiary } from '@/api'
+import DiaryCard from '@/components/DiaryCard.vue'
 
 const diaries = ref([])
 const loading = ref(true)

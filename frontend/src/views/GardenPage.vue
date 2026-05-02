@@ -13,13 +13,7 @@
     </div>
 
     <div v-else class="grid md:grid-cols-2 gap-5">
-      <div v-for="d in garden" :key="d.id" class="bg-white border-[3px] border-pencil p-5 wobbly-md shadow-hard-sm card-hover relative">
-        <div class="tack"></div>
-        <div class="text-2xl mb-2">{{ moodEmoji(d.mood_score) }}</div>
-        <h2 class="text-lg" style="font-family: 'Kalam', cursive; font-weight: 700;">{{ d.title }}</h2>
-        <p class="text-base text-pencil/70 mt-1">{{ d.content.slice(0, 80) }}{{ d.content.length > 80 ? '...' : '' }}</p>
-        <p class="text-xs text-pencil/40 mt-2">{{ d.created_at }}</p>
-      </div>
+      <DiaryCard v-for="d in garden" :key="d.id" :diary="d" variant="garden" />
     </div>
   </div>
 </template>
@@ -27,6 +21,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { getGarden } from '@/api'
+import DiaryCard from '@/components/DiaryCard.vue'
 
 const loading = ref(true)
 const garden = ref([])

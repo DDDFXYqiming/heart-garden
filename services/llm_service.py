@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Tuple, Generator
 from .interface.llm_interface import LLMInterface, Message, ChatResponse
 from .openai_compatible import OpenAICompatibleProvider
 from .prompt_engine import PromptBuilder, MoodContext
+from .security import sanitize_output
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +167,8 @@ class LLMService:
                 max_tokens=max_tokens,
                 stream=False
             )
+            if response and response.content:
+                response.content = sanitize_output(response.content)
             content_len = len(response.content or "")
             logger.info(
                 "LLM chat success chars=%s finish_reason=%s usage=%s",
@@ -396,6 +399,8 @@ class LLMService:
         )
         try:
             for chunk in provider.chat_stream(messages, temperature=temp, max_tokens=1024):
+                if chunk:
+                    chunk = sanitize_output(chunk)
                 chunk_count += 1
                 char_count += len(chunk or "")
                 yield chunk

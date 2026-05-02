@@ -5,6 +5,8 @@ AI 对话 + SSE 流式 API 路由
 import uuid
 import json
 import time
+import queue
+import threading
 from flask import Blueprint, request, jsonify, g, current_app, stream_with_context
 from ..db import query_db, execute_db
 from ..auth import require_auth, _analyze_with_custom_words
@@ -14,6 +16,8 @@ from services.prompt_engine import MoodContext
 from .. import logger
 
 chat_bp = Blueprint('chat', __name__)
+
+HEARTBEAT_INTERVAL = 15  # 秒，可通过 app.config['HEARTBEAT_INTERVAL'] 覆盖
 
 
 def _load_user_llm_config(user_id: str) -> dict:
@@ -193,6 +197,7 @@ def chat():
 @chat_bp.route('/api/chat/stream', methods=['POST'])
 @require_auth
 def chat_stream():
+    heartbeat_interval = current_app.config.get('HEARTBEAT_INTERVAL', HEARTBEAT_INTERVAL)
     data = request.json
     user_message = data.get('message', '')
     conversation_id = data.get('conversation_id')
@@ -259,48 +264,92 @@ def chat_stream():
     )
 
     def generate():
+        import queue
+        import threading
+
         stream_start = time.perf_counter()
         full_response = []
         response_mode = "rule_engine"
 
-        if llm_configured:
-            response_mode = "llm"
-            mood_ctx = MoodContext(
-                mood_label=mood_result['mood_label'],
-                mood_score=mood_result['mood_score'],
-                keywords=mood_result.get('keywords', [])
-            )
+        # 使用闭包中的 heartbeat_interval（来自 chat_stream）
+        # 事件队列：chunk / heartbeat / done / fallback
+        event_queue = queue.Queue(maxsize=200)
+        stop_event = threading.Event()
+
+        def llm_worker():
+            """读取 LLM 流式 chunk，放入事件队列"""
+            nonlocal response_mode, full_response
             try:
-                for chunk in llm_service.chat_stream(
-                    user_message=user_message,
-                    conversation_history=history_list,
-                    mood_context=mood_ctx,
-                    user_config=user_llm_config
-                ):
-                    full_response.append(chunk)
-                    yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+                if llm_configured:
+                    response_mode = "llm"
+                    mood_ctx = MoodContext(
+                        mood_label=mood_result['mood_label'],
+                        mood_score=mood_result['mood_score'],
+                        keywords=mood_result.get('keywords', [])
+                    )
+                    for chunk in llm_service.chat_stream(
+                        user_message=user_message,
+                        conversation_history=history_list,
+                        mood_context=mood_ctx,
+                        user_config=user_llm_config
+                    ):
+                        full_response.append(chunk)
+                        event_queue.put(('chunk', chunk))
             except Exception as e:
                 logger.exception("chat_stream LLM exception conv=%s error=%s", conversation_id, e)
-                response_mode = "rule_engine"
+            finally:
+                if not full_response and llm_configured:
+                    logger.warning(
+                        "chat_stream LLM empty result conv=%s fallback=rule_engine",
+                        conversation_id
+                    )
+                    response_mode = "rule_engine"
+                    event_queue.put(('fallback', None))
+                else:
+                    event_queue.put(('done', None))
 
-        if llm_configured and not full_response:
-            logger.warning(
-                "chat_stream LLM empty result conv=%s fallback=rule_engine",
-                conversation_id
-            )
+        def heartbeat_worker():
+            """每 heartbeat_interval 秒发送一次 SSE 心跳"""
+            while not stop_event.is_set():
+                if stop_event.wait(timeout=heartbeat_interval):
+                    break
+                if not stop_event.is_set():
+                    try:
+                        event_queue.put_nowait(('heartbeat', None))
+                    except queue.Full:
+                        pass
 
-        if not full_response:
-            response_mode = "rule_engine"
-            response = ai_companion.generate_response(
-                user_message, history=history_list, mood=mood_result['mood_label']
-            )
-            full_response = [response]
-            logger.info(
-                "chat_stream rule_engine response conv=%s response_chars=%s",
-                conversation_id,
-                len(response or "")
-            )
-            yield f"data: {json.dumps({'type': 'chunk', 'content': response}, ensure_ascii=False)}\n\n"
+        llm_thread = threading.Thread(target=llm_worker, daemon=True)
+        heartbeat_thread = threading.Thread(target=heartbeat_worker, daemon=True)
+        llm_thread.start()
+        heartbeat_thread.start()
+
+        while True:
+            try:
+                event_type, data = event_queue.get(timeout=1)
+                if event_type == 'chunk':
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': data}, ensure_ascii=False)}\n\n"
+                elif event_type == 'heartbeat':
+                    yield ':keep-alive\n\n'
+                elif event_type == 'fallback':
+                    response = ai_companion.generate_response(
+                        user_message, history=history_list, mood=mood_result['mood_label']
+                    )
+                    full_response = [response]
+                    logger.info(
+                        "chat_stream rule_engine response conv=%s response_chars=%s",
+                        conversation_id,
+                        len(response or "")
+                    )
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': response}, ensure_ascii=False)}\n\n"
+                elif event_type == 'done':
+                    break
+            except queue.Empty:
+                continue
+
+        stop_event.set()
+        llm_thread.join(timeout=5)
+        heartbeat_thread.join(timeout=5)
 
         final_text = ''.join(full_response)
         execute_db('''

@@ -18,17 +18,12 @@
         还没有情绪记录
       </div>
       <div v-else class="space-y-3">
-        <div v-for="r in records" :key="r.timestamp" class="flex items-center gap-4 p-3 border-b-[2px] border-muted last:border-0">
-          <div :class="['w-3 h-3 rounded-full', moodColor(r.label)]"></div>
-          <div class="flex-1">
-            <div class="h-4 bg-muted wobbly-sm relative overflow-hidden">
-              <div :class="['h-full wobbly-sm', moodColor(r.label)]" :style="{ width: r.score + '%' }"></div>
-            </div>
-          </div>
-          <span class="text-sm w-8 text-right">{{ r.score }}</span>
-          <span class="text-sm text-pencil/50 w-12">{{ r.label }}</span>
-          <span class="text-xs text-pencil/40 hidden md:block">{{ formatDate(r.timestamp) }}</span>
-        </div>
+        <MoodBar
+          v-for="r in records"
+          :key="r.timestamp"
+          type="trend"
+          :data="r"
+        />
       </div>
     </div>
 
@@ -38,21 +33,23 @@
         <div class="text-3xl animate-gentle-bounce">📊</div>
       </div>
       <div v-else class="space-y-3">
-        <div v-for="(count, label) in distribution" :key="label" class="flex items-center gap-3">
-          <span class="w-10 text-sm">{{ label }}</span>
-          <div class="flex-1 h-5 bg-muted wobbly-sm relative overflow-hidden">
-            <div :class="['h-full wobbly-sm', moodColor(label)]" :style="{ width: barWidth(count) + '%' }"></div>
-          </div>
-          <span class="text-sm w-8 text-right">{{ count }}</span>
-        </div>
+        <MoodBar
+          v-for="(count, label) in distribution"
+          :key="label"
+          type="distribution"
+          :label="label"
+          :count="count"
+          :max-value="maxCount"
+        />
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { getMoodTrend, getMoodDistribution } from '@/api'
+import MoodBar from '@/components/MoodBar.vue'
 
 const days = ref(7)
 const records = ref([])
@@ -60,19 +57,9 @@ const distribution = ref({})
 const loading = ref(true)
 const loadingDist = ref(true)
 
-function moodColor(label) {
-  const map = { '开心': 'bg-yellow-400', '平静': 'bg-green-400', '中性': 'bg-blue-400', '焦虑': 'bg-orange-400', '悲伤': 'bg-purple-400' }
-  return map[label] || 'bg-gray-400'
-}
-
-function formatDate(ts) {
-  return ts ? ts.slice(0, 10) : ''
-}
-
-function barWidth(count) {
-  const max = Math.max(...Object.values(distribution.value), 1)
-  return (count / max) * 100
-}
+const maxCount = computed(() => {
+  return Math.max(...Object.values(distribution.value), 1)
+})
 
 async function fetchData() {
   loading.value = true

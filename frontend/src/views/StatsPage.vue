@@ -7,26 +7,10 @@
     </div>
 
     <div v-else class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-      <div class="bg-white border-[3px] border-pencil p-5 wobbly-md shadow-hard-sm card-hover text-center">
-        <div class="text-3xl mb-1">📝</div>
-        <div class="text-2xl font-bold" style="font-family: 'Kalam', cursive;">{{ stats.total_diaries }}</div>
-        <div class="text-sm text-pencil/60">日记</div>
-      </div>
-      <div class="bg-white border-[3px] border-pencil p-5 wobbly-md shadow-hard-sm card-hover text-center">
-        <div class="text-3xl mb-1">💬</div>
-        <div class="text-2xl font-bold" style="font-family: 'Kalam', cursive;">{{ stats.total_conversations }}</div>
-        <div class="text-sm text-pencil/60">对话</div>
-      </div>
-      <div class="bg-white border-[3px] border-pencil p-5 wobbly-md shadow-hard-sm card-hover text-center">
-        <div class="text-3xl mb-1">📈</div>
-        <div class="text-2xl font-bold" style="font-family: 'Kalam', cursive;">{{ stats.avg_mood_score }}</div>
-        <div class="text-sm text-pencil/60">平均情绪分</div>
-      </div>
-      <div class="bg-white border-[3px] border-pencil p-5 wobbly-md shadow-hard-sm card-hover text-center">
-        <div class="text-3xl mb-1">🏆</div>
-        <div class="text-xl font-bold" style="font-family: 'Kalam', cursive;">{{ stats.most_common_mood }}</div>
-        <div class="text-sm text-pencil/60">最常情绪</div>
-      </div>
+      <StatCard icon="📝" :value="stats.total_diaries" label="日记" />
+      <StatCard icon="💬" :value="stats.total_conversations" label="对话" />
+      <StatCard icon="📈" :value="stats.avg_mood_score" label="平均情绪分" />
+      <StatCard icon="🏆" :value="stats.most_common_mood" label="最常情绪" />
     </div>
 
     <div class="bg-white border-[3px] border-pencil p-6 wobbly-md shadow-hard-sm">
@@ -48,6 +32,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { getStats } from '@/api'
+import StatCard from '@/components/StatCard.vue'
 
 const loading = ref(true)
 const stats = ref({

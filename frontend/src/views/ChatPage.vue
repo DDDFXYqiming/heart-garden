@@ -33,17 +33,7 @@
         <div v-if="messages.length === 0 && !loading" class="text-center text-pencil/30 py-20">
           选择左侧对话，或开始新的聊天~
         </div>
-        <div v-for="(msg, i) in messages" :key="i" :class="['flex', msg.role === 'user' ? 'justify-end' : 'justify-start']">
-          <div :class="['max-w-[80%] px-4 py-2 border-[2px] border-pencil', msg.role === 'user' ? 'bg-sticky' : 'bg-white', 'wobbly-sm']">
-            <p class="text-base whitespace-pre-line">{{ msg.content }}</p>
-            <div v-if="msg.mood_label" class="flex items-center gap-2 mt-1">
-              <span class="text-xs text-pencil/50">{{ msg.mood_label }}</span>
-              <span v-if="msg.response_mode" :class="['text-xs px-1.5 py-0.5 border border-pencil/30 rounded', msg.response_mode === 'llm' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500']">
-                {{ msg.response_mode === 'llm' ? 'AI' : '规则' }}
-              </span>
-            </div>
-          </div>
-        </div>
+        <ChatBubble v-for="(msg, i) in messages" :key="i" :msg="msg" />
         <div v-if="loading" class="flex justify-start">
           <div class="px-4 py-2 border-[2px] border-pencil bg-white wobbly-sm">
             <div class="flex gap-1">
@@ -66,6 +56,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { chatStream, getConversations, getConversation } from '@/api'
+import ChatBubble from '@/components/ChatBubble.vue'
 
 const messages = ref([])
 const conversations = ref([])

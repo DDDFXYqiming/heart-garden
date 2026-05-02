@@ -236,8 +236,25 @@ npm run dev
 
 ### ✅ v3.0.6 - 流式 UTF-8 修复
 - 修复 SSE 流式响应末尾多字节截断乱码
-- llm_service.py chat_stream() yield 前校验多字节字符完整性，截断时缓冲到下个 chunk
+- llm_service.py chat_stream() 多字节字符完整性校验
 - 新增流式 UTF-8 完整性回归测试
+- 添加心跳保活机制（每 15 秒），防止 Vite proxy/Nginx 超时
+- json.dumps 加 ensure_ascii=False，保留中文原文
+
+### ✅ v3.0.7 - LLM 安全防护
+- 输入清洗（sanitize_input）：移除控制字符、过滤注入模式、截断超长输入
+- 提示词加固（harden_system_prompt）：添加安全边界，防止指令覆盖
+- 用户消息隔离（wrap_user_message）：用 `[用户消息开始/结束]` 标记
+- 输出过滤（sanitize_output）：移除泄露的系统提示词、截断过长输出
+- 注入检测（detect_injection）：识别常见的提示词注入尝试
+- 集成 PromptBuilder 和 LLMService 使用安全防护
+- 回归测试 13 个：输入清洗/提示词加固/输出过滤/注入检测
+
+### ✅ v3.1 - 前端组件重构
+- 创建 4 个共享组件：ChatBubble、DiaryCard、MoodBar、StatCard
+- 重构 5 个页面使用共享组件：ChatPage、DiaryList、GardenPage、MoodTrend、StatsPage
+- 组件统一导出（components/index.js）
+- 单元测试：17 个测试全部通过
 
 ## API 接口
 

@@ -8,6 +8,7 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass, asdict
 
 from services.constants import TEMPLATES, EMOJI_MAP, MOOD_KEYWORDS
+from services.security import harden_system_prompt, wrap_user_message, sanitize_input
 
 
 @dataclass
@@ -98,7 +99,7 @@ class PromptBuilder:
             "6. 让用户感受到被理解和被重视",
         ])
 
-        return "\n".join(parts)
+        return harden_system_prompt("\n".join(parts))
 
     def build_user_message(
         self,
@@ -117,16 +118,16 @@ class PromptBuilder:
         Returns:
             str: 用户消息部分
         """
-        # 添加对话历史
+        safe_message = sanitize_input(user_message)
+
         history_part = ""
         if conversation_history and len(conversation_history) > 0:
             history_part = "之前的对话：\n"
-            for msg in conversation_history[-5:]:  # 只显示最近 5 条
+            for msg in conversation_history[-5:]:
                 role = msg.get('role', 'unknown')
-                content = msg.get('content', '')
+                content = sanitize_input(msg.get('content', ''))
                 history_part += f"{role}: {content}\n"
 
-        # 添加情绪上下文
         mood_part = ""
         if mood_context:
             mood_part = f"""
@@ -136,10 +137,11 @@ class PromptBuilder:
 - 关键词：{', '.join(mood_context.keywords) if mood_context.keywords else '无'}
 """
 
-        return f"""用户当前消息：{user_message}
+        raw = f"""用户当前消息：{safe_message}
 
 {history_part}{mood_part}
 """
+        return wrap_user_message(raw)
 
     def build_full_prompt(
         self,
