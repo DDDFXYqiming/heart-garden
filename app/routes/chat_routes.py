@@ -298,7 +298,8 @@ def chat_stream():
             except Exception as e:
                 logger.exception("chat_stream LLM exception conv=%s error=%s", conversation_id, e)
             finally:
-                if not full_response and llm_configured:
+                if not full_response:
+                    # LLM 未配置或调用失败，fallback 到 rule_engine
                     logger.warning(
                         "chat_stream LLM empty result conv=%s fallback=rule_engine",
                         conversation_id
@@ -342,6 +343,7 @@ def chat_stream():
                         len(response or "")
                     )
                     yield f"data: {json.dumps({'type': 'chunk', 'content': response}, ensure_ascii=False)}\n\n"
+                    event_queue.put(('done', None))
                 elif event_type == 'done':
                     break
             except queue.Empty:

@@ -12,6 +12,8 @@ const routes = [
   { path: '/stats', name: 'Stats', component: () => import('@/views/StatsPage.vue') },
   { path: '/garden', name: 'Garden', component: () => import('@/views/GardenPage.vue') },
   { path: '/settings', name: 'Settings', component: () => import('@/views/SettingsPage.vue') },
+  { path: '/reminders', name: 'Reminders', component: () => import('@/views/RemindersPage.vue') },
+  { path: '/notifications', name: 'Notifications', component: () => import('@/views/NotificationsPage.vue') },
 ]
 
 const router = createRouter({

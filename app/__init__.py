@@ -218,4 +218,24 @@ def create_app():
     from .routes import register_routes
     register_routes(app)
 
+    # 启动定时提醒任务（后台线程，测试时不启动）
+    if not IS_TESTING:
+        import threading
+        from services import reminder_service
+        
+        def reminder_scheduler():
+            """定时检查提醒（每小时一次）"""
+            while True:
+                try:
+                    with app.app_context():
+                        reminder_service.check_and_send_all()
+                except Exception as e:
+                    logger.error(f"Reminder scheduler error: {e}")
+                
+                time.sleep(3600)  # 每小时
+        
+        scheduler_thread = threading.Thread(target=reminder_scheduler, daemon=True)
+        scheduler_thread.start()
+        logger.info("Reminder scheduler started")
+
     return app

@@ -164,6 +164,47 @@ def init_db():
             VALUES ('dev-user', '开发用户', 'dev@heart-garden.local', 'dev-mode-no-auth')
             ''')
 
+        # 提醒设置表
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS reminder_settings (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            reminder_type TEXT NOT NULL CHECK(reminder_type IN ('mood_alert', 'daily_care', 'weekly_summary')),
+            enabled BOOLEAN DEFAULT 1,
+            threshold_score REAL DEFAULT 25.0,
+            quiet_hours_start TIME DEFAULT '22:00',
+            quiet_hours_end TIME DEFAULT '08:00',
+            last_sent TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        ''')
+
+        # 通知记录表
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS notifications (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            notification_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            is_read BOOLEAN DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        ''')
+
+        # 提醒相关索引
+        cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_reminder_settings_user ON reminder_settings(user_id)
+        ''')
+        cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)
+        ''')
+        cursor.execute('''
+        CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_id, is_read)
+        ''')
+
         conn.commit()
         conn.close()
         logger.debug("Database initialized successfully")

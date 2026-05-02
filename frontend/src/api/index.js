@@ -148,4 +148,24 @@ export function testLLMConnection(config) {
   return api.post('/llm/test', config)
 }
 
+export function getReminderSettings() {
+  return api.get('/reminders/settings')
+}
+
+export function updateReminderSettings(settings) {
+  return api.put('/reminders/settings', settings)
+}
+
+export function getNotifications(params) {
+  return api.get('/notifications', { params })
+}
+
+export function markNotificationRead(id) {
+  return api.put(`/notifications/${id}/read`)
+}
+
+export function markAllNotificationsRead() {
+  return api.put('/notifications/read-all')
+}
+
 export default api

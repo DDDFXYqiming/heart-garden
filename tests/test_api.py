@@ -780,3 +780,71 @@ class TestSecurityV307:
         test_output = "system prompt leaked here"
         filtered = sanitize_output(test_output)
         assert "[内容已过滤]" in filtered
+
+
+class TestReminderAPI:
+    """v3.2 提醒功能集成测试"""
+
+    def setup_method(self):
+        self.client = app.test_client()
+        suffix = _unique()
+        self.username = f'remind_{suffix}'
+        self.email = f'remind_{suffix}@test.com'
+        self.client.post('/api/auth/register', json={
+            'username': self.username, 'email': self.email, 'password': 'test123'
+        })
+        login_resp = self.client.post('/api/auth/login', json={
+            'username': self.username, 'email': self.email, 'password': 'test123'
+        })
+        self.token = json.loads(login_resp.data)['data']['token']
+
+    def _auth(self):
+        return {'Authorization': f'Bearer {self.token}'}
+
+    def test_get_reminder_settings_default(self):
+        """测试获取默认提醒设置"""
+        resp = self.client.get('/api/reminders/settings', headers=self._auth())
+        data = json.loads(resp.data)
+
+        assert resp.status_code == 200
+        assert data['success'] is True
+        assert isinstance(data['data'], list)
+        assert len(data['data']) >= 1
+
+    def test_update_reminder_settings(self):
+        """测试更新提醒设置"""
+        # 先获取默认设置
+        get_resp = self.client.get('/api/reminders/settings', headers=self._auth())
+        get_data = json.loads(get_resp.data)
+        settings = get_data['data']
+
+        # 修改设置
+        settings[0]['enabled'] = False
+        if len(settings) > 0:
+            settings[0]['threshold_score'] = 50.0
+
+        # 更新
+        update_resp = self.client.put('/api/reminders/settings', 
+                                      json=settings, headers=self._auth())
+        update_data = json.loads(update_resp.data)
+
+        assert update_resp.status_code == 200
+        assert update_data['success'] is True
+
+    def test_get_notifications_empty(self):
+        """测试获取空通知列表"""
+        resp = self.client.get('/api/notifications', headers=self._auth())
+        data = json.loads(resp.data)
+
+        assert resp.status_code == 200
+        assert data['success'] is True
+        assert 'notifications' in data['data']
+        assert data['data']['unread_count'] == 0
+
+    def test_mark_all_read(self):
+        """测试全部标记已读"""
+        resp = self.client.put('/api/notifications/read-all', headers=self._auth())
+        data = json.loads(resp.data)
+
+        assert resp.status_code == 200
+        assert data['success'] is True
