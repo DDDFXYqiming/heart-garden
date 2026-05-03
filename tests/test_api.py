@@ -848,3 +848,102 @@ class TestReminderAPI:
 
         assert resp.status_code == 200
         assert data['success'] is True
+
+
+class TestCommunityAPI:
+    """v3.3.1 社区功能集成测试"""
+
+    def setup_method(self):
+        self.client = app.test_client()
+        suffix = _unique()
+        self.username = f'community_{suffix}'
+        self.email = f'community_{suffix}@test.com'
+        self.client.post('/api/auth/register', json={
+            'username': self.username, 'email': self.email, 'password': 'test123'
+        })
+        login_resp = self.client.post('/api/auth/login', json={
+            'username': self.username, 'email': self.email, 'password': 'test123'
+        })
+        self.token = json.loads(login_resp.data)['data']['token']
+        
+        # 清理 community_posts 表，确保测试隔离
+        from app import create_app
+        test_app = create_app()
+        with test_app.app_context():
+            import sqlite3
+            conn = sqlite3.connect(test_app.config['DATABASE'])
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM community_posts')
+            cursor.execute('DELETE FROM post_likes')
+            cursor.execute('DELETE FROM post_comments')
+            conn.commit()
+            conn.close()
+
+    def _auth(self):
+        return {'Authorization': f'Bearer {self.token}'}
+
+    def test_get_posts_empty(self):
+        """测试获取空帖子列表"""
+        resp = self.client.get('/api/community/posts', headers=self._auth())
+        data = json.loads(resp.data)
+
+        assert resp.status_code == 200
+        assert data['success'] is True
+        assert data['data']['total'] == 0
+        assert len(data['data']['posts']) == 0
+
+    def test_create_post_anonymous(self):
+        """测试匿名发布帖子"""
+        resp = self.client.post('/api/community/posts', json={
+            'content': '这是一个匿名测试帖子',
+            'mood_label': '开心',
+            'mood_score': 80.0,
+            'is_anonymous': True
+        }, headers=self._auth())
+        data = json.loads(resp.data)
+
+        assert resp.status_code == 201
+        assert data['success'] is True
+        assert 'post_id' in data['data']
+
+    def test_create_post_not_anonymous(self):
+        """测试实名发布帖子"""
+        resp = self.client.post('/api/community/posts', json={
+            'content': '这是一个实名测试帖子',
+            'mood_label': '平静',
+            'mood_score': 65.0,
+            'is_anonymous': False
+        }, headers=self._auth())
+        data = json.loads(resp.data)
+
+        assert resp.status_code == 201
+        assert data['success'] is True
+        assert 'post_id' in data['data']
+
+    def test_get_posts_with_data(self):
+        """测试有数据时的帖子列表"""
+        # 先发布一个帖子
+        self.client.post('/api/community/posts', json={
+            'content': '测试帖子内容',
+            'mood_label': '开心',
+            'mood_score': 80.0
+        }, headers=self._auth())
+
+        # 获取列表
+        resp = self.client.get('/api/community/posts', headers=self._auth())
+        data = json.loads(resp.data)
+
+        assert resp.status_code == 200
+        assert data['success'] is True
+        assert data['data']['total'] >= 1
+        assert len(data['data']['posts']) >= 1
+
+    def test_create_post_no_content(self):
+        """测试发布空内容帖子（应该失败）"""
+        resp = self.client.post('/api/community/posts', json={
+            'content': ''
+        }, headers=self._auth())
+        data = json.loads(resp.data)
+
+        assert resp.status_code == 400
+        assert data['success'] is False

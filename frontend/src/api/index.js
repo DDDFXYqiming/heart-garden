@@ -168,4 +168,12 @@ export function markAllNotificationsRead() {
   return api.put('/notifications/read-all')
 }
 
+export function getCommunityPosts(params) {
+  return api.get('/community/posts', { params })
+}
+
+export function createCommunityPost(data) {
+  return api.post('/community/posts', data)
+}
+
 export default api

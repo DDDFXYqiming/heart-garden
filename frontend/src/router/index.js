@@ -14,6 +14,8 @@ const routes = [
   { path: '/settings', name: 'Settings', component: () => import('@/views/SettingsPage.vue') },
   { path: '/reminders', name: 'Reminders', component: () => import('@/views/RemindersPage.vue') },
   { path: '/notifications', name: 'Notifications', component: () => import('@/views/NotificationsPage.vue') },
+  { path: '/community', name: 'Community', component: () => import('@/views/CommunityPage.vue') },
+  { path: '/community/create', name: 'CreatePost', component: () => import('@/views/CreatePostPage.vue') },
 ]
 
 const router = createRouter({

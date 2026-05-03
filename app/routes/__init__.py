@@ -14,6 +14,7 @@ def register_routes(app):
     from .garden_routes import garden_bp
     from .info_routes import info_bp
     from .reminder_routes import reminder_bp
+    from .community_routes import community_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(llm_bp)
@@ -25,3 +26,4 @@ def register_routes(app):
     app.register_blueprint(garden_bp)
     app.register_blueprint(info_bp)
     app.register_blueprint(reminder_bp)
+    app.register_blueprint(community_bp)
