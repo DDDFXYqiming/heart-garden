@@ -101,6 +101,37 @@ describe('GardenPage', () => {
     expect(hasHappyEmoji).toBe(true)
   })
 
+  test('clicking a plant index card opens the detail panel', async () => {
+    getGarden.mockResolvedValue({
+      data: [
+        {
+          id: '1',
+          title: '第一篇日记',
+          content: '今天天气真好',
+          mood_label: '开心',
+          mood_score: 80,
+          created_at: '2026-05-01'
+        }
+      ]
+    })
+
+    const wrapper = mount(GardenPage, {
+      global: { stubs: ['router-link'] }
+    })
+
+    await flushPromises()
+
+    const indexButton = wrapper.findAll('button').find(button => button.text().includes('第一篇日记'))
+    expect(indexButton).toBeTruthy()
+
+    await indexButton.trigger('click')
+
+    const panel = wrapper.find('[data-testid="detail-panel"]')
+    expect(panel.exists()).toBe(true)
+    expect(panel.text()).toContain('日记之花')
+    expect(panel.text()).toContain('这朵向日葵来自“第一篇日记”')
+  })
+
   test('empty garden renders existing empty-state message', async () => {
     getGarden.mockResolvedValue({
       data: []

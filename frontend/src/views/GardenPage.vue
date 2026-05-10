@@ -1,96 +1,119 @@
 <template>
   <div>
-    <h1 class="text-3xl md:text-4xl mb-6" style="font-family: 'Kalam', cursive; font-weight: 700;">记忆花园</h1>
+    <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <p class="mb-1 text-sm text-pencil/60">把每一段记录种进会呼吸的 3D 小花园</p>
+        <h1 class="text-3xl md:text-4xl" style="font-family: 'Kalam', cursive; font-weight: 700;">记忆花园</h1>
+      </div>
+      <button
+        v-if="selectedPlant"
+        class="border-[2px] border-pencil bg-white px-4 py-2 shadow-hard-sm transition-all hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none wobbly-sm"
+        @click="selectedPlant = null"
+      >
+        回到全景
+      </button>
+    </div>
 
     <div v-if="loading" class="text-center py-10">
       <div class="text-5xl animate-gentle-bounce">🌸</div>
       <p class="text-lg mt-2">花园正在生长...</p>
     </div>
 
-    <div v-else-if="garden.length === 0" class="text-center py-10">
-      <div class="text-5xl mb-3">🌱</div>
+    <div v-else-if="garden.length === 0" class="border-[3px] border-pencil bg-white/80 p-8 text-center shadow-hard-sm wobbly-md">
+      <div class="text-6xl mb-3">🌱</div>
       <p class="text-xl">你的花园还是空地，种下第一篇日记吧</p>
+      <p class="mt-2 text-pencil/60">等第一颗种子落下，这里会长出属于你的 3D 记忆花。</p>
     </div>
 
     <template v-else>
-      <!-- Summary card -->
-      <div class="bg-white border-[3px] border-pencil p-5 wobbly-md shadow-hard-sm mb-6">
-        <h2 class="text-xl mb-3" style="font-family: 'Kalam', cursive; font-weight: 700;">🌿 花园概览</h2>
-        <div class="flex flex-wrap gap-4 text-sm">
-          <div>
-            <span class="text-pencil/60">日记总数</span>
-            <div class="text-2xl font-bold" style="font-family: 'Kalam', cursive;">{{ summary.totalCount }}</div>
-          </div>
-          <div>
-            <span class="text-pencil/60">平均情绪分</span>
-            <div class="text-2xl font-bold" style="font-family: 'Kalam', cursive;">{{ summary.avgScore }}</div>
-          </div>
-          <div>
-            <span class="text-pencil/60">花园状态</span>
-            <div class="text-2xl font-bold" style="font-family: 'Kalam', cursive;">{{ summary.status }}</div>
-          </div>
+      <div class="grid gap-4 md:grid-cols-4 mb-6">
+        <div class="bg-white border-[3px] border-pencil p-4 wobbly-md shadow-hard-sm">
+          <span class="text-pencil/60">日记总数</span>
+          <div class="text-3xl font-bold" style="font-family: 'Kalam', cursive;">{{ overview.totalCount }}</div>
+        </div>
+        <div class="bg-white border-[3px] border-pencil p-4 wobbly-md shadow-hard-sm">
+          <span class="text-pencil/60">平均情绪分</span>
+          <div class="text-3xl font-bold" style="font-family: 'Kalam', cursive;">{{ overview.avgScore }}</div>
+        </div>
+        <div class="bg-white border-[3px] border-pencil p-4 wobbly-md shadow-hard-sm md:col-span-2">
+          <span class="text-pencil/60">花园概览</span>
+          <div class="text-2xl font-bold" style="font-family: 'Kalam', cursive;">{{ overview.statusEmoji }} {{ overview.statusText }}</div>
+          <p class="mt-1 text-sm text-pencil/60">每朵花都对应一条记录，颜色、高度和花型由情绪与内容生成。</p>
         </div>
       </div>
 
-      <!-- Plant tiles -->
-      <div class="grid md:grid-cols-2 gap-5">
-        <div
-          v-for="d in garden"
-          :key="d.id"
-          class="border-[3px] border-pencil p-5 wobbly-md shadow-hard-sm card-hover relative bg-white/80"
-        >
-          <div class="tack"></div>
-          <div class="text-3xl mb-2">{{ plantEmoji(d.mood_score) }}</div>
-          <h2 class="text-xl" style="font-family: 'Kalam', cursive; font-weight: 700;">
-            {{ d.title }}
-          </h2>
-          <p class="text-base text-pencil/70 mt-1">
-            {{ d.content.slice(0, 80) }}{{ d.content.length > 80 ? '...' : '' }}
-          </p>
-          <div class="flex items-center gap-3 mt-3">
-            <span class="text-sm text-pencil/50">{{ d.created_at }}</span>
-            <span class="text-sm text-pencil/50">·</span>
-            <span class="text-sm text-pencil/50">情绪 {{ d.mood_score }}</span>
-          </div>
+      <GardenScene
+        :plants="plants"
+        :overview="overview"
+        @select-plant="selectPlant"
+      />
+
+      <div class="mt-6 border-[3px] border-pencil bg-white/80 p-5 shadow-hard-sm wobbly-md">
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-xl font-bold" style="font-family: 'Kalam', cursive;">🌷 记忆花朵索引</h2>
+          <span class="text-sm text-pencil/60">给键盘与低性能设备保留的文字入口</span>
+        </div>
+        <div class="grid gap-3 md:grid-cols-2">
+          <button
+            v-for="plant in plants"
+            :key="plant.id"
+            class="group border-[2px] border-pencil bg-white/80 p-4 text-left shadow-hard-sm transition-all hover:translate-x-[1px] hover:translate-y-[1px] hover:bg-amber-50 hover:shadow-none wobbly-sm"
+            @click="selectPlant(plant)"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <h3 class="text-lg font-bold" style="font-family: 'Kalam', cursive;">{{ plant.title }}</h3>
+              <span class="text-xl">{{ plantIcon(plant.modelType) }}</span>
+            </div>
+            <p class="mt-1 line-clamp-2 text-sm text-pencil/65">{{ plant.contentPreview }}</p>
+            <div class="mt-2 text-xs text-pencil/50">{{ plant.createdAt }} · {{ plant.moodLabel }} · 情绪 {{ plant.moodScore }}</div>
+          </button>
         </div>
       </div>
     </template>
+
+    <PlantDetailPanel
+      :plant="selectedPlant"
+      @close="selectedPlant = null"
+      @open-source="openSourceRecord"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { getGarden } from '@/api'
+import GardenScene from '@/components/garden/GardenScene.vue'
+import PlantDetailPanel from '@/components/garden/PlantDetailPanel.vue'
+import { buildGardenOverview, createGardenPlants } from '@/utils/gardenMapping'
 
 const loading = ref(true)
 const garden = ref([])
+const selectedPlant = ref(null)
 
-const summary = computed(() => {
-  const items = garden.value
-  const count = items.length
-  if (count === 0) {
-    return { totalCount: 0, avgScore: '0', status: '🌱 需要浇水' }
-  }
-  const total = items.reduce((sum, d) => sum + (d.mood_score || 0), 0)
-  const avg = total / count
-  const avgRounded = Math.round(avg * 10) / 10
-  let status
-  if (avg >= 70) {
-    status = '🌻 繁花盛开'
-  } else if (avg >= 40) {
-    status = '🌿 稳定生长'
-  } else {
-    status = '🌱 需要浇水'
-  }
-  return { totalCount: count, avgScore: avgRounded.toFixed(1), status }
-})
+const plants = computed(() => createGardenPlants(garden.value))
+const overview = computed(() => buildGardenOverview(plants.value))
 
-function plantEmoji(score) {
-  if (score >= 75) return '🌻'
-  if (score >= 60) return '🌿'
-  if (score >= 40) return '🌱'
-  if (score >= 25) return '🍂'
-  return '🌵'
+function plantIcon(modelType) {
+  const icons = {
+    sunflower: '🌻',
+    leafBloom: '🌸',
+    flower: '🌺',
+    sprout: '🌱',
+    duskLeaf: '🍂',
+    cactus: '🌵'
+  }
+  return icons[modelType] || '🌷'
+}
+
+function selectPlant(plant) {
+  selectedPlant.value = plant
+}
+
+function openSourceRecord(plant) {
+  if (!plant?.id) return
+  if (plant.sourceType === 'diary') {
+    window.location.hash = `#/diary/${plant.id}`
+  }
 }
 
 onMounted(async () => {
