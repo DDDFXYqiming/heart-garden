@@ -83,8 +83,8 @@ const saving = ref(false)
 async function loadSettings() {
   try {
     const res = await getReminderSettings()
-    if (res.data.success) {
-      settings.value = res.data.data
+    if (res.success) {
+      settings.value = res.data
     }
   } catch (error) {
     console.error('加载提醒设置失败:', error)
@@ -97,7 +97,7 @@ async function saveSettings() {
   saving.value = true
   try {
     const res = await updateReminderSettings(settings.value)
-    if (res.data.success) {
+    if (res.success) {
       alert('设置已保存')
     }
   } catch (error) {

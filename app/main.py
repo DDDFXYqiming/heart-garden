@@ -8,6 +8,7 @@ Entry point.
 import os
 from app import create_app, logger
 from app.db import init_db
+from app.version import APP_DISPLAY_VERSION
 
 app = create_app()
 
@@ -18,9 +19,9 @@ if __name__ == '__main__':
     try:
         port = int(os.environ.get('PORT', '5000'))
         debug = os.getenv('FLASK_DEBUG', '').lower() in ('1', 'true', 'yes')
-        logger.info("=== 心语花园 v2.2 已启动 ===")
+        logger.info(f"=== 心语花园 {APP_DISPLAY_VERSION} 已启动 ===")
         logger.info(f"=== API: http://0.0.0.0:{port} ===")
-        print("=== 心语花园 v2.2 已启动 ===")
+        print(f"=== 心语花园 {APP_DISPLAY_VERSION} 已启动 ===")
         print(f"=== API: http://0.0.0.0:{port} ===")
         app.run(debug=debug, host='0.0.0.0', port=port)
     except Exception as e:

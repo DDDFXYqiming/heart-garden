@@ -12,6 +12,16 @@
     </div>
 
     <div class="bg-white border-[3px] border-pencil p-6 wobbly-md shadow-hard-sm mb-6">
+      <h2 class="text-xl mb-3" style="font-family: 'Kalam', cursive; font-weight: 700;">本地数据</h2>
+      <p class="text-sm text-pencil/60 mb-4">把日记、情绪记录和对话导出为 JSON 文件，只保存在你的电脑上。</p>
+      <button @click="downloadExport" :disabled="exporting"
+        class="px-4 py-2 text-sm border-[2px] border-pencil bg-white shadow-hard hover:shadow-hard-hover hover:translate-x-[1px] hover:translate-y-[1px] active:shadow-none transition-all wobbly-sm disabled:opacity-50">
+        {{ exporting ? '导出中...' : '导出本地数据' }}
+      </button>
+      <p v-if="exportMessage" class="text-sm text-green-600 mt-2">{{ exportMessage }}</p>
+    </div>
+
+    <div class="bg-white border-[3px] border-pencil p-6 wobbly-md shadow-hard-sm mb-6">
       <h2 class="text-xl mb-4" style="font-family: 'Kalam', cursive; font-weight: 700;">
         AI 对话模式
         <span :class="['ml-2 text-sm px-2 py-0.5 border-[2px] border-pencil wobbly-sm', llmConfig.enabled ? 'bg-green-200' : 'bg-yellow-200']">
@@ -89,7 +99,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { getLLMConfig, saveLLMConfig, testLLMConnection } from '@/api'
+import { getLLMConfig, saveLLMConfig, testLLMConnection, exportLocalData } from '@/api'
 
 const auth = useAuthStore()
 const user = auth.user
@@ -107,6 +117,8 @@ const testing = ref(false)
 const saving = ref(false)
 const testResult = ref(null)
 const saveSuccess = ref(false)
+const exporting = ref(false)
+const exportMessage = ref('')
 
 async function fetchLLMConfig() {
   try {
@@ -168,6 +180,31 @@ async function saveConfig() {
     error.value = err.message || '保存失败'
   } finally {
     saving.value = false
+  }
+}
+
+async function downloadExport() {
+  exporting.value = true
+  exportMessage.value = ''
+  error.value = ''
+  try {
+    const res = await exportLocalData()
+    const payload = res.data
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `heart-garden-export-${new Date().toISOString().slice(0, 10)}.json`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+    exportMessage.value = '导出完成，文件已经保存到浏览器下载目录。'
+    setTimeout(() => { exportMessage.value = '' }, 3000)
+  } catch (err) {
+    error.value = err.message || '导出失败'
+  } finally {
+    exporting.value = false
   }
 }
 

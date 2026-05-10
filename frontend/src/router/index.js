@@ -23,18 +23,25 @@ const router = createRouter({
   routes
 })
 
-// ========================================
-// 路由守卫 - 开发阶段已禁用
-// 启用时取消下方注释，并注释掉 router.afterEach
-// ========================================
-// router.beforeEach((to, from, next) => {
-//   const token = localStorage.getItem('token')
-//   const publicPages = ['Home', 'Login', 'Register']
-//   if (!token && !publicPages.includes(to.name)) {
-//     next({ name: 'Login' })
-//   } else {
-//     next()
-//   }
-// })
+// 路由守卫
+// 开发服务器默认允许免登录浏览，避免本地单机调试被认证流程打断。
+// 生产构建或显式设置 VITE_DEV_AUTH_BYPASS=false 时启用登录保护。
+router.beforeEach((to) => {
+  const devAuthBypass = import.meta.env.DEV && import.meta.env.VITE_DEV_AUTH_BYPASS !== 'false'
+  if (devAuthBypass) return true
+
+  const token = localStorage.getItem('token')
+  const publicPages = ['Home', 'Login', 'Register']
+
+  if (!token && !publicPages.includes(to.name)) {
+    return { name: 'Login' }
+  }
+
+  if (token && ['Login', 'Register'].includes(to.name)) {
+    return { name: 'Diaries' }
+  }
+
+  return true
+})
 
 export default router

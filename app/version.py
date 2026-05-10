@@ -1,0 +1,6 @@
+"""
+应用版本信息。
+"""
+
+APP_VERSION = '3.3.1'
+APP_DISPLAY_VERSION = f'v{APP_VERSION}'

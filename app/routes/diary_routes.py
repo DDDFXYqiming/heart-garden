@@ -13,6 +13,11 @@ from .. import logger
 diary_bp = Blueprint('diary', __name__)
 
 
+def _escape_like(term):
+    """Escape SQLite LIKE wildcards so diary search treats user text literally."""
+    return term.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+
+
 @diary_bp.route('/api/diaries', methods=['POST'])
 @require_auth
 def create_diary():
@@ -69,19 +74,36 @@ def create_diary():
 def get_diaries():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 10, type=int)
+    q = request.args.get('q', '').strip()
+    mood = request.args.get('mood', '').strip()
+
+    where_clauses = ['user_id = ?']
+    params = [g.current_user_id]
+
+    if q:
+        like_pattern = f'%{_escape_like(q)}%'
+        where_clauses.append("(title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\')")
+        params.append(like_pattern)
+        params.append(like_pattern)
+
+    if mood:
+        where_clauses.append('mood_label = ?')
+        params.append(mood)
+
+    where_sql = ' AND '.join(where_clauses)
 
     total = query_db(
-        'SELECT COUNT(*) as count FROM diaries WHERE user_id = ?',
-        (g.current_user_id,), one=True
+        f'SELECT COUNT(*) as count FROM diaries WHERE {where_sql}',
+        tuple(params), one=True
     )
 
-    rows = query_db('''
+    rows = query_db(f'''
     SELECT id, title, content, mood_score, mood_label, ai_analysis, created_at
     FROM diaries
-    WHERE user_id = ?
+    WHERE {where_sql}
     ORDER BY created_at DESC
     LIMIT ? OFFSET ?
-    ''', (g.current_user_id, per_page, (page - 1) * per_page))
+    ''', tuple(params + [per_page, (page - 1) * per_page]))
 
     logger.debug(f"Get diaries: page={page}, total={total['count']}, user={g.current_user_id}")
     return jsonify({

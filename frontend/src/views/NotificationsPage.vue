@@ -51,9 +51,9 @@ const unread_count = ref(0)
 async function loadNotifications() {
   try {
     const res = await getNotifications()
-    if (res.data.success) {
-      notifications.value = res.data.data.notifications
-      unread_count.value = res.data.data.unread_count
+    if (res.success) {
+      notifications.value = res.data.notifications
+      unread_count.value = res.data.unread_count
     }
   } catch (error) {
     console.error('加载通知失败:', error)
@@ -77,7 +77,7 @@ async function markAsRead(notification) {
 async function markAllRead() {
   try {
     const res = await markAllNotificationsRead()
-    if (res.data.success) {
+    if (res.success) {
       notifications.value.forEach(n => n.is_read = true)
       unread_count.value = 0
     }

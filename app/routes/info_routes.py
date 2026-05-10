@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from flask import Blueprint, jsonify, request, send_from_directory
 from .. import STATIC_DIR
+from ..version import APP_VERSION
 
 info_bp = Blueprint('info', __name__)
 
@@ -17,7 +18,7 @@ def api_info():
         'success': True,
         'data': {
             'name': 'Heart Garden - 心语花园',
-            'version': '2.2.0',
+            'version': APP_VERSION,
             'description': 'AI 驱动的情感陪伴应用 - 大模型混合模式',
             'endpoints': {
                 'auth': {
@@ -69,7 +70,7 @@ def health_check():
         'data': {
             'status': 'healthy',
             'timestamp': datetime.now().isoformat(),
-            'version': '2.2.0'
+            'version': APP_VERSION
         }
     })
 
@@ -95,7 +96,7 @@ def serve_spa(path):
         'success': True,
         'data': {
             'name': 'Heart Garden - 心语花园',
-            'version': '2.2.0',
+            'version': APP_VERSION,
             'description': '前端静态文件尚未构建，请运行 npm --prefix frontend run build。'
         }
     })

@@ -39,8 +39,8 @@ export function getMe() {
   return api.get('/auth/me')
 }
 
-export function getDiaries(page = 1, perPage = 10) {
-  return api.get('/diaries', { params: { page, per_page: perPage } })
+export function getDiaries(page = 1, perPage = 10, filters = {}) {
+  return api.get('/diaries', { params: { page, per_page: perPage, ...filters } })
 }
 
 export function getDiary(id) {
@@ -118,6 +118,10 @@ export function analyzeMood(text) {
 
 export function getStats() {
   return api.get('/stats/overview')
+}
+
+export function exportLocalData() {
+  return api.get('/export')
 }
 
 export function getGarden() {

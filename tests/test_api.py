@@ -12,6 +12,7 @@ os.environ['JWT_SECRET'] = 'test-secret-key-for-testing'
 os.environ['DEV_MODE'] = 'true'
 
 from app.main import app
+from app.version import APP_VERSION
 
 
 def _unique():
@@ -27,6 +28,7 @@ class TestHealthAPI:
         assert resp.status_code == 200
         data = json.loads(resp.data)
         assert data.get('ok') is True or data.get('success') is True
+        assert data['data']['version'] == APP_VERSION
 
 
 class TestAuthAPI:
@@ -192,6 +194,27 @@ class TestStatsAPI:
         assert 'total_conversations' in d
         assert 'avg_mood_score' in d
         assert 'last_7_days' in d
+
+    def test_stats_overview_includes_personal_insight(self):
+        self.client.post('/api/diaries', json={
+            'title': '温柔回顾样本', 'content': '今天虽然有点累，但我还是完成了记录，也想好好休息。'
+        }, headers=self._auth())
+
+        resp = self.client.get('/api/stats/overview', headers=self._auth())
+        data = json.loads(resp.data)
+
+        assert resp.status_code == 200
+        assert data['success'] is True
+        insight = data['data']['insight']
+        assert insight['summary']
+        assert insight['suggestion']
+        assert insight['active_days'] >= 1
+        assert insight['streak_days'] >= 1
+        assert 'positive' in insight['mood_balance']
+        assert 'neutral' in insight['mood_balance']
+        assert 'negative' in insight['mood_balance']
+        assert insight['best_day']['avg_score'] >= 0
+        assert insight['lowest_day']['avg_score'] >= 0
 
 
 class TestMoodAPI:

@@ -131,7 +131,7 @@ async function publishPost() {
       is_anonymous: isAnonymous.value
     })
 
-    if (res.data.success) {
+    if (res.success) {
       router.push('/community')
     }
   } catch (error) {

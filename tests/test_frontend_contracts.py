@@ -9,7 +9,11 @@ import re
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CHAT_PAGE = PROJECT_ROOT / "frontend" / "src" / "views" / "ChatPage.vue"
 SETTINGS_PAGE = PROJECT_ROOT / "frontend" / "src" / "views" / "SettingsPage.vue"
+STATS_PAGE = PROJECT_ROOT / "frontend" / "src" / "views" / "StatsPage.vue"
 API_INDEX = PROJECT_ROOT / "frontend" / "src" / "api" / "index.js"
+ROUTER_INDEX = PROJECT_ROOT / "frontend" / "src" / "router" / "index.js"
+VIEWS_DIR = PROJECT_ROOT / "frontend" / "src" / "views"
+DIARY_LIST = VIEWS_DIR / "DiaryList.vue"
 
 
 def _script_setup(source: str) -> str:
@@ -61,3 +65,78 @@ def test_settings_page_custom_mood_dictionary_temporarily_disabled():
     assert "fetchWords" not in script
     assert "handleAdd" not in script
     assert "handleDelete" not in script
+
+
+def test_vue_pages_do_not_use_nested_success_after_api_interceptor_unwraps_response():
+    """api/index.js 已返回 response.data，页面不能再写 res.data.success。"""
+    api_source = API_INDEX.read_text(encoding="utf-8")
+    assert "response => response.data" in api_source
+
+    offenders = []
+    for path in sorted(VIEWS_DIR.glob("*.vue")):
+        source = path.read_text(encoding="utf-8")
+        if "res.data.success" in source:
+            offenders.append(path.relative_to(PROJECT_ROOT).as_posix())
+
+    assert offenders == []
+
+
+def test_router_guard_is_explicit_and_dev_bypass_is_intentional():
+    """路由守卫必须是可执行代码，开发免登录只能是显式 DEV bypass，不应长期注释掉。"""
+    source = ROUTER_INDEX.read_text(encoding="utf-8")
+
+    assert re.search(r"(?m)^router\.beforeEach\(", source)
+    assert "const publicPages" in source
+    assert "import.meta.env.DEV" in source
+
+
+def test_get_diaries_accepts_filters_parameter():
+    """getDiaries 必须接受第三个 filters 参数用于搜索/筛选"""
+    source = API_INDEX.read_text(encoding="utf-8")
+    assert "export function getDiaries(page = 1, perPage = 10, filters = {})" in source
+    assert "...filters" in source or "filters" in source
+
+
+def test_diary_list_has_search_placeholder():
+    """DiaryList.vue 必须包含搜索占位文字 '搜索日记'"""
+    source = DIARY_LIST.read_text(encoding="utf-8")
+    assert "搜索日记" in source
+
+
+def test_diary_list_has_mood_select_text():
+    """DiaryList.vue 必须包含情绪筛选文字 '全部情绪'"""
+    source = DIARY_LIST.read_text(encoding="utf-8")
+    assert "全部情绪" in source
+
+
+def test_diary_list_calls_get_diaries_with_filters():
+    """DiaryList.vue 调用 getDiaries 时必须传入 filters 对象"""
+    source = DIARY_LIST.read_text(encoding="utf-8")
+    script = _script_setup(source)
+    assert "getDiaries(" in script
+    assert "filters" in script
+
+
+def test_stats_page_renders_personal_insight_contract():
+    """统计页必须渲染后端提供的个人温柔回顾 insight。"""
+    source = STATS_PAGE.read_text(encoding="utf-8")
+    script = _script_setup(source)
+    assert "温柔回顾" in source
+    assert "stats.insight" in source
+    assert "summary" in source
+    assert "suggestion" in source
+    assert "insight" in script
+
+
+def test_settings_page_exposes_local_export_action():
+    """设置页必须提供本地数据导出入口，且通过 API 包装函数调用 /api/export。"""
+    api_source = API_INDEX.read_text(encoding="utf-8")
+    settings_source = SETTINGS_PAGE.read_text(encoding="utf-8")
+    settings_script = _script_setup(settings_source)
+
+    assert "export function exportLocalData()" in api_source
+    assert "api.get('/export')" in api_source
+    assert "导出本地数据" in settings_source
+    assert "exportLocalData" in settings_script
+    assert "heart-garden-export" in settings_script
+    assert "new Blob" in settings_script

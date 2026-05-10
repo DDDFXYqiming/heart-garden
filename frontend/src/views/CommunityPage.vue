@@ -109,9 +109,9 @@ async function loadPosts() {
       page: currentPage.value,
       mood_filter: currentFilter.value || undefined
     })
-    if (res.data.success) {
-      posts.value = res.data.data.posts
-      totalPages.value = res.data.data.total_pages
+    if (res.success) {
+      posts.value = res.data.posts
+      totalPages.value = res.data.total_pages
     }
   } catch (error) {
     console.error('加载帖子失败:', error)
