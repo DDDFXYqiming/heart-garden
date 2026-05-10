@@ -52,6 +52,15 @@ describe('3D garden MVP contract', () => {
     expect(source).toContain('clearSelection({ notify: true, resetView: false })')
   })
 
+  test('GardenScene pins the WebGL canvas to the visible container to keep the plot centered', () => {
+    const source = readFrontendFile('src/components/garden/GardenScene.vue')
+
+    expect(source).toContain("renderer.domElement.style.width = '100%'")
+    expect(source).toContain("renderer.domElement.style.height = '100%'")
+    expect(source).toContain("renderer.domElement.style.display = 'block'")
+    expect(source).toContain('renderer.setSize(width, height, false)')
+  })
+
   test('GardenPage syncs selected flower state into and out of GardenScene', () => {
     const source = readFrontendFile('src/views/GardenPage.vue')
 
