@@ -28,10 +28,36 @@ describe('3D garden MVP contract', () => {
 
     expect(source).toContain("import * as THREE from 'three'")
     expect(source).toContain('OrbitControls')
-    expect(source).toContain("defineEmits(['select-plant'])")
+    expect(source).toContain("defineEmits(['select-plant', 'clear-selection'])")
+    expect(source).toContain('selectedPlantId')
     expect(source).toContain('function pickPlant')
     expect(source).toContain('function focusPlant')
+    expect(source).toContain('function clearSelection')
+    expect(source).toContain('function handleWheel')
+    expect(source).toContain('autoFocusActive')
+    expect(source).toContain('stopAutoFocus')
     expect(source).toContain('data-testid="garden-scene"')
+  })
+
+  test('GardenScene keeps camera controls free after focus and supports wider zoom/orbit bounds', () => {
+    const source = readFrontendFile('src/components/garden/GardenScene.vue')
+
+    expect(source).toContain('CAMERA_LIMITS')
+    expect(source).toContain('minDistance: 2.8')
+    expect(source).toContain('maxDistance: 48')
+    expect(source).toContain('maxPolarAngle: Math.PI * 0.92')
+    expect(source).toContain('controls.addEventListener(\'start\', stopAutoFocus)')
+    expect(source).toContain("renderer.domElement.addEventListener('wheel', handleWheel)")
+    expect(source).toContain('event.deltaY > 0')
+    expect(source).toContain('clearSelection({ notify: true, resetView: false })')
+  })
+
+  test('GardenPage syncs selected flower state into and out of GardenScene', () => {
+    const source = readFrontendFile('src/views/GardenPage.vue')
+
+    expect(source).toContain(':selected-plant-id="selectedPlant?.id || null"')
+    expect(source).toContain('@clear-selection="clearSelection"')
+    expect(source).toContain('function clearSelection')
   })
 
   test('GardenScene shows a gentle fallback when WebGL is unavailable', async () => {

@@ -53,6 +53,16 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 
 const PLOT_WIDTH = 16
 const PLOT_DEPTH = 10
+const CAMERA_LIMITS = {
+  minDistance: 2.8,
+  maxDistance: 48,
+  minPolarAngle: Math.PI * 0.04,
+  maxPolarAngle: Math.PI * 0.92,
+  focusCompleteDistance: 0.08
+}
+const CLICK_DRAG_THRESHOLD = 4
+const HOME_CAMERA_POSITION = new THREE.Vector3(0, 8.8, 16)
+const HOME_LOOK_AT = new THREE.Vector3(0, 0.7, 0)
 
 const props = defineProps({
   plants: {
@@ -62,10 +72,14 @@ const props = defineProps({
   overview: {
     type: Object,
     default: null
+  },
+  selectedPlantId: {
+    type: [String, Number],
+    default: null
   }
 })
 
-const emit = defineEmits(['select-plant'])
+const emit = defineEmits(['select-plant', 'clear-selection'])
 
 const container = ref(null)
 const hoveredPlant = ref(null)
@@ -83,6 +97,10 @@ let resizeObserver
 let targetCameraPosition
 let targetLookAt
 let selectedPlantId = null
+let autoFocusActive = false
+let pointerDownPosition = null
+let pointerMovedBeyondClick = false
+let suppressNextNullSelectionSync = false
 const clock = new THREE.Clock()
 
 function webglAvailable() {
@@ -103,12 +121,12 @@ function initScene() {
 
   scene = new THREE.Scene()
   scene.background = new THREE.Color('#fff8ec')
-  scene.fog = new THREE.Fog('#fff8ec', 14, 32)
+  scene.fog = new THREE.Fog('#fff8ec', 24, 72)
 
-  camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100)
-  camera.position.set(0, 8.8, 13)
-  targetCameraPosition = camera.position.clone()
-  targetLookAt = new THREE.Vector3(0, 0.7, 0)
+  camera = new THREE.PerspectiveCamera(42, 1, 0.1, 120)
+  camera.position.copy(HOME_CAMERA_POSITION)
+  targetCameraPosition = HOME_CAMERA_POSITION.clone()
+  targetLookAt = HOME_LOOK_AT.clone()
 
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
@@ -120,10 +138,12 @@ function initScene() {
   controls = new OrbitControls(camera, renderer.domElement)
   controls.enableDamping = true
   controls.dampingFactor = 0.08
-  controls.minDistance = 6
-  controls.maxDistance = 22
-  controls.maxPolarAngle = Math.PI / 2.35
+  controls.minDistance = CAMERA_LIMITS.minDistance
+  controls.maxDistance = CAMERA_LIMITS.maxDistance
+  controls.minPolarAngle = CAMERA_LIMITS.minPolarAngle
+  controls.maxPolarAngle = CAMERA_LIMITS.maxPolarAngle
   controls.target.copy(targetLookAt)
+  controls.addEventListener('start', stopAutoFocus)
 
   raycaster = new THREE.Raycaster()
   pointer = new THREE.Vector2()
@@ -137,7 +157,13 @@ function initScene() {
 
   renderer.domElement.addEventListener('pointermove', handlePointerMove)
   renderer.domElement.addEventListener('pointerleave', handlePointerLeave)
+  renderer.domElement.addEventListener('pointerdown', handlePointerDown)
+  renderer.domElement.addEventListener('pointerup', handlePointerUp)
+  renderer.domElement.addEventListener('wheel', handleWheel)
   renderer.domElement.addEventListener('click', handleClick)
+  window.addEventListener('keydown', handleKeydown)
+
+  syncSelectedPlant(props.selectedPlantId, { focus: Boolean(props.selectedPlantId) })
 
   resizeObserver = new ResizeObserver(resizeRenderer)
   resizeObserver.observe(container.value)
@@ -379,12 +405,50 @@ function handlePointerMove(event) {
 
 function handlePointerLeave() {
   hoveredPlant.value = null
+  pointerDownPosition = null
+  pointerMovedBeyondClick = false
+}
+
+function handlePointerDown(event) {
+  pointerDownPosition = { x: event.clientX, y: event.clientY }
+  pointerMovedBeyondClick = false
+}
+
+function handlePointerUp(event) {
+  if (!pointerDownPosition) return
+  const distance = Math.hypot(event.clientX - pointerDownPosition.x, event.clientY - pointerDownPosition.y)
+  pointerMovedBeyondClick = distance > CLICK_DRAG_THRESHOLD
+  pointerDownPosition = null
+}
+
+function handleWheel(event) {
+  stopAutoFocus()
+  // Scrolling outward from a focused flower is the intentional gesture for leaving the active memory.
+  if (selectedPlantId && event.deltaY > 0) {
+    clearSelection({ notify: true, resetView: false })
+  }
+}
+
+function handleKeydown(event) {
+  if (event.key === 'Escape' && selectedPlantId) {
+    clearSelection({ notify: true, resetView: true })
+  }
 }
 
 function handleClick(event) {
+  if (pointerMovedBeyondClick) {
+    pointerMovedBeyondClick = false
+    pointerDownPosition = null
+    return
+  }
+
   const hit = pickPlant(event)
   const plant = hit?.userData?.plant
-  if (!plant) return
+  if (!plant) {
+    if (selectedPlantId) clearSelection({ notify: true, resetView: false })
+    return
+  }
+
   selectedPlantId = plant.id
   focusPlant(plant)
   emit('select-plant', plant)
@@ -405,6 +469,42 @@ function focusPlant(plant) {
   const z = plant.z - PLOT_DEPTH / 2
   targetLookAt = new THREE.Vector3(x, Math.max(plant.height || 1.2, 1), z)
   targetCameraPosition = new THREE.Vector3(x + 3.2, 3.4, z + 4.2)
+  autoFocusActive = true
+}
+
+function resetToOverview() {
+  targetCameraPosition = HOME_CAMERA_POSITION.clone()
+  targetLookAt = HOME_LOOK_AT.clone()
+  autoFocusActive = true
+}
+
+function stopAutoFocus() {
+  autoFocusActive = false
+}
+
+function clearSelection({ notify = false, resetView = true } = {}) {
+  selectedPlantId = null
+  if (resetView) resetToOverview()
+  if (notify) {
+    suppressNextNullSelectionSync = true
+    emit('clear-selection')
+  }
+}
+
+function syncSelectedPlant(plantId, options = {}) {
+  if (!plantId) {
+    if (suppressNextNullSelectionSync) {
+      suppressNextNullSelectionSync = false
+      selectedPlantId = null
+      return
+    }
+    clearSelection({ notify: false, resetView: true })
+    return
+  }
+
+  const plant = props.plants.find(item => String(item.id) === String(plantId))
+  selectedPlantId = plantId
+  if (plant && options.focus !== false) focusPlant(plant)
 }
 
 function animate() {
@@ -424,8 +524,16 @@ function animate() {
   }
 
   if (camera && controls) {
-    camera.position.lerp(targetCameraPosition, 0.035)
-    controls.target.lerp(targetLookAt, 0.055)
+    if (autoFocusActive) {
+      camera.position.lerp(targetCameraPosition, 0.035)
+      controls.target.lerp(targetLookAt, 0.055)
+      if (
+        camera.position.distanceTo(targetCameraPosition) < CAMERA_LIMITS.focusCompleteDistance &&
+        controls.target.distanceTo(targetLookAt) < CAMERA_LIMITS.focusCompleteDistance
+      ) {
+        autoFocusActive = false
+      }
+    }
     controls.update()
   }
 
@@ -460,8 +568,13 @@ function cleanup() {
   if (renderer?.domElement) {
     renderer.domElement.removeEventListener('pointermove', handlePointerMove)
     renderer.domElement.removeEventListener('pointerleave', handlePointerLeave)
+    renderer.domElement.removeEventListener('pointerdown', handlePointerDown)
+    renderer.domElement.removeEventListener('pointerup', handlePointerUp)
+    renderer.domElement.removeEventListener('wheel', handleWheel)
     renderer.domElement.removeEventListener('click', handleClick)
   }
+  window.removeEventListener('keydown', handleKeydown)
+  controls?.removeEventListener('start', stopAutoFocus)
   if (plantsRoot) disposeGroup(plantsRoot)
   if (renderer) {
     renderer.dispose()
@@ -469,7 +582,11 @@ function cleanup() {
   }
 }
 
-watch(() => props.plants, rebuildPlants, { deep: true })
+watch(() => props.plants, () => {
+  rebuildPlants()
+  if (props.selectedPlantId) syncSelectedPlant(props.selectedPlantId, { focus: false })
+}, { deep: true })
+watch(() => props.selectedPlantId, (plantId) => syncSelectedPlant(plantId))
 
 onMounted(initScene)
 onBeforeUnmount(cleanup)

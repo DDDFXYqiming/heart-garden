@@ -8,7 +8,7 @@
       <button
         v-if="selectedPlant"
         class="border-[2px] border-pencil bg-white px-4 py-2 shadow-hard-sm transition-all hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none wobbly-sm"
-        @click="selectedPlant = null"
+        @click="clearSelection"
       >
         回到全景
       </button>
@@ -45,7 +45,9 @@
       <GardenScene
         :plants="plants"
         :overview="overview"
+        :selected-plant-id="selectedPlant?.id || null"
         @select-plant="selectPlant"
+        @clear-selection="clearSelection"
       />
 
       <div class="mt-6 border-[3px] border-pencil bg-white/80 p-5 shadow-hard-sm wobbly-md">
@@ -73,7 +75,7 @@
 
     <PlantDetailPanel
       :plant="selectedPlant"
-      @close="selectedPlant = null"
+      @close="clearSelection"
       @open-source="openSourceRecord"
     />
   </div>
@@ -107,6 +109,10 @@ function plantIcon(modelType) {
 
 function selectPlant(plant) {
   selectedPlant.value = plant
+}
+
+function clearSelection() {
+  selectedPlant.value = null
 }
 
 function openSourceRecord(plant) {

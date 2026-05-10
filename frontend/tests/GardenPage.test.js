@@ -1,4 +1,5 @@
 import { mount, flushPromises } from '@vue/test-utils'
+import { h } from 'vue'
 import { describe, test, expect, vi } from 'vitest'
 import GardenPage from '../src/views/GardenPage.vue'
 
@@ -8,6 +9,19 @@ vi.mock('@/api', () => ({
 }))
 
 import { getGarden } from '@/api'
+
+const GardenSceneStub = {
+  name: 'GardenScene',
+  props: ['plants', 'overview', 'selectedPlantId'],
+  emits: ['select-plant', 'clear-selection'],
+  setup(props, { emit }) {
+    return () => h('div', {
+      'data-testid': 'garden-scene-stub',
+      'data-selected-plant-id': props.selectedPlantId || '',
+      onClick: () => emit('clear-selection')
+    })
+  }
+}
 
 describe('GardenPage', () => {
   test('loading resolves to summary containing 花园概览', async () => {
@@ -130,6 +144,77 @@ describe('GardenPage', () => {
     expect(panel.exists()).toBe(true)
     expect(panel.text()).toContain('日记之花')
     expect(panel.text()).toContain('这朵向日葵来自“第一篇日记”')
+  })
+
+  test('clicking a plant index card syncs the selected plant id into the 3D scene', async () => {
+    getGarden.mockResolvedValue({
+      data: [
+        {
+          id: '1',
+          title: '第一篇日记',
+          content: '今天天气真好',
+          mood_label: '开心',
+          mood_score: 80,
+          created_at: '2026-05-01'
+        }
+      ]
+    })
+
+    const wrapper = mount(GardenPage, {
+      global: {
+        stubs: {
+          'router-link': true,
+          GardenScene: GardenSceneStub
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const indexButton = wrapper.findAll('button').find(button => button.text().includes('第一篇日记'))
+    expect(indexButton).toBeTruthy()
+
+    await indexButton.trigger('click')
+
+    expect(wrapper.find('[data-testid="detail-panel"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="garden-scene-stub"]').attributes('data-selected-plant-id')).toBe('1')
+  })
+
+  test('GardenScene clear-selection closes the detail panel and clears the selected scene id', async () => {
+    getGarden.mockResolvedValue({
+      data: [
+        {
+          id: '1',
+          title: '第一篇日记',
+          content: '今天天气真好',
+          mood_label: '开心',
+          mood_score: 80,
+          created_at: '2026-05-01'
+        }
+      ]
+    })
+
+    const wrapper = mount(GardenPage, {
+      global: {
+        stubs: {
+          'router-link': true,
+          GardenScene: GardenSceneStub
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const indexButton = wrapper.findAll('button').find(button => button.text().includes('第一篇日记'))
+    expect(indexButton).toBeTruthy()
+
+    await indexButton.trigger('click')
+    expect(wrapper.find('[data-testid="detail-panel"]').exists()).toBe(true)
+
+    await wrapper.find('[data-testid="garden-scene-stub"]').trigger('click')
+
+    expect(wrapper.find('[data-testid="detail-panel"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="garden-scene-stub"]').attributes('data-selected-plant-id')).toBe('')
   })
 
   test('empty garden renders existing empty-state message', async () => {
