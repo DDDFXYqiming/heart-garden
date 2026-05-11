@@ -5,14 +5,15 @@ import GardenPage from '../src/views/GardenPage.vue'
 
 // Mock the API module
 vi.mock('@/api', () => ({
-  getGarden: vi.fn()
+  getGarden: vi.fn(),
+  getGardenWorld: vi.fn()
 }))
 
-import { getGarden } from '@/api'
+import { getGarden, getGardenWorld } from '@/api'
 
 const GardenSceneStub = {
   name: 'GardenScene',
-  props: ['plants', 'overview', 'selectedPlantId'],
+  props: ['plants', 'overview', 'world', 'selectedPlantId'],
   emits: ['select-plant', 'clear-selection'],
   setup(props, { emit }) {
     return () => h('div', {
@@ -24,26 +25,33 @@ const GardenSceneStub = {
 }
 
 describe('GardenPage', () => {
-  test('loading resolves to summary containing 花园概览', async () => {
-    getGarden.mockResolvedValue({
-      data: [
-        {
-          id: '1',
-          title: '第一篇日记',
-          content: '今天天气真好',
-          mood_label: '开心',
-          mood_score: 80,
-          created_at: '2026-05-01'
-        },
-        {
-          id: '2',
-          title: '第二篇日记',
-          content: '有些疲惫的一天',
-          mood_label: '平静',
-          mood_score: 60,
-          created_at: '2026-05-02'
-        }
-      ]
+  beforeEach(() => {
+    getGarden.mockReset()
+    getGardenWorld.mockReset()
+  })
+
+  test('loading resolves to immersive garden summary and legend note', async () => {
+    getGardenWorld.mockResolvedValue({
+      data: {
+        items: [
+          {
+            id: '1',
+            title: '第一篇日记',
+            content: '今天天气真好',
+            mood_label: '开心',
+            mood_score: 80,
+            created_at: '2026-05-01'
+          },
+          {
+            id: '2',
+            title: '第二篇日记',
+            content: '有些疲惫的一天',
+            mood_label: '平静',
+            mood_score: 60,
+            created_at: '2026-05-02'
+          }
+        ]
+      }
     })
 
     const wrapper = mount(GardenPage, {
@@ -53,13 +61,15 @@ describe('GardenPage', () => {
     // Wait for the async onMounted to complete
     await flushPromises()
 
-    // Summary card should contain 花园概览
-    expect(wrapper.text()).toContain('花园概览')
+    expect(wrapper.find('[data-testid="garden-world-summary"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="garden-legend-note"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('今日气候')
   })
 
   test('two mocked diaries render as plant cards with titles', async () => {
-    getGarden.mockResolvedValue({
-      data: [
+    getGardenWorld.mockResolvedValue({
+      data: {
+        items: [
         {
           id: '1',
           title: '第一篇日记',
@@ -76,7 +86,8 @@ describe('GardenPage', () => {
           mood_score: 60,
           created_at: '2026-05-02'
         }
-      ]
+        ]
+      }
     })
 
     const wrapper = mount(GardenPage, {
@@ -90,8 +101,9 @@ describe('GardenPage', () => {
   })
 
   test('high score renders a happy/bright plant label or emoji', async () => {
-    getGarden.mockResolvedValue({
-      data: [
+    getGardenWorld.mockResolvedValue({
+      data: {
+        items: [
         {
           id: '1',
           title: '开心的一天',
@@ -100,7 +112,8 @@ describe('GardenPage', () => {
           mood_score: 85,
           created_at: '2026-05-01'
         }
-      ]
+        ]
+      }
     })
 
     const wrapper = mount(GardenPage, {
@@ -116,8 +129,9 @@ describe('GardenPage', () => {
   })
 
   test('clicking a plant index card opens the detail panel', async () => {
-    getGarden.mockResolvedValue({
-      data: [
+    getGardenWorld.mockResolvedValue({
+      data: {
+        items: [
         {
           id: '1',
           title: '第一篇日记',
@@ -126,7 +140,8 @@ describe('GardenPage', () => {
           mood_score: 80,
           created_at: '2026-05-01'
         }
-      ]
+        ]
+      }
     })
 
     const wrapper = mount(GardenPage, {
@@ -147,8 +162,9 @@ describe('GardenPage', () => {
   })
 
   test('clicking a plant index card syncs the selected plant id into the 3D scene', async () => {
-    getGarden.mockResolvedValue({
-      data: [
+    getGardenWorld.mockResolvedValue({
+      data: {
+        items: [
         {
           id: '1',
           title: '第一篇日记',
@@ -157,7 +173,8 @@ describe('GardenPage', () => {
           mood_score: 80,
           created_at: '2026-05-01'
         }
-      ]
+        ]
+      }
     })
 
     const wrapper = mount(GardenPage, {
@@ -181,8 +198,9 @@ describe('GardenPage', () => {
   })
 
   test('GardenScene clear-selection closes the detail panel and clears the selected scene id', async () => {
-    getGarden.mockResolvedValue({
-      data: [
+    getGardenWorld.mockResolvedValue({
+      data: {
+        items: [
         {
           id: '1',
           title: '第一篇日记',
@@ -191,7 +209,8 @@ describe('GardenPage', () => {
           mood_score: 80,
           created_at: '2026-05-01'
         }
-      ]
+        ]
+      }
     })
 
     const wrapper = mount(GardenPage, {
@@ -218,8 +237,10 @@ describe('GardenPage', () => {
   })
 
   test('empty garden renders existing empty-state message', async () => {
-    getGarden.mockResolvedValue({
-      data: []
+    getGardenWorld.mockResolvedValue({
+      data: {
+        items: []
+      }
     })
 
     const wrapper = mount(GardenPage, {
@@ -229,5 +250,29 @@ describe('GardenPage', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('你的花园还是空地，种下第一篇日记吧')
+  })
+
+  test('falls back to legacy garden API if world API is unavailable', async () => {
+    getGardenWorld.mockRejectedValue(new Error('world unavailable'))
+    getGarden.mockResolvedValue({
+      data: [
+        {
+          id: '1',
+          title: '旧接口日记',
+          content: '旧接口也能长出花',
+          mood_score: 65,
+          created_at: '2026-05-01'
+        }
+      ]
+    })
+
+    const wrapper = mount(GardenPage, {
+      global: { stubs: ['router-link'] }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('旧接口日记')
+    expect(getGarden).toHaveBeenCalled()
   })
 })

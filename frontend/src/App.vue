@@ -25,13 +25,14 @@
         </nav>
       </div>
     </header>
-    <main class="max-w-5xl mx-auto px-4 py-6 md:py-10">
+    <main :class="mainClasses">
       <router-view />
     </main>
   </div>
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 
 const route = useRoute()
@@ -47,6 +48,11 @@ const navItems = [
 function isNavActive(item) {
   return item.names.includes(route.name)
 }
+
+const mainClasses = computed(() => [
+  'mx-auto px-4 py-6 md:py-10',
+  route.name === 'Garden' ? 'max-w-[1500px]' : 'max-w-5xl'
+])
 
 // 开发模式：auth 相关代码保留，恢复认证时使用
 // import { useAuthStore } from '@/stores/auth'

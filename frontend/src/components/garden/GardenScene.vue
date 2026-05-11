@@ -6,23 +6,31 @@
     <div
       ref="container"
       data-testid="garden-scene"
-      class="h-[520px] min-h-[440px] w-full cursor-grab active:cursor-grabbing md:h-[620px]"
+      class="h-[560px] min-h-[460px] w-full cursor-zoom-in md:h-[690px]"
     ></div>
 
     <div class="pointer-events-none absolute left-4 top-4 max-w-xs border-[2px] border-pencil bg-white/88 px-4 py-3 text-sm shadow-hard-sm backdrop-blur wobbly-sm">
       <div class="font-bold" style="font-family: 'Kalam', cursive;">🌿 3D 记忆花园</div>
-      <div class="text-pencil/70">纸模花圃里，记忆正在慢慢发光。</div>
+      <div class="text-pencil/70">固定纸模沙盘里，记忆正在慢慢发光。</div>
     </div>
 
     <div
-      v-if="overview"
+      v-if="activeClimate"
+      data-testid="garden-weather-badge"
       class="pointer-events-none absolute right-4 top-4 hidden border-[2px] border-pencil bg-white/88 px-4 py-3 text-sm shadow-hard-sm backdrop-blur wobbly-sm md:block"
     >
-      <div class="text-pencil/60">花园状态</div>
+      <div class="text-pencil/60">今日气候</div>
       <div class="text-xl font-bold" style="font-family: 'Kalam', cursive;">
-        {{ overview.statusEmoji }} {{ overview.statusText }}
+        {{ activeClimate.icon }} {{ activeClimate.label }}
       </div>
-      <div class="text-pencil/70">{{ overview.totalCount }} 朵记忆花 · 平均 {{ overview.avgScore }}</div>
+      <div class="text-pencil/70">{{ activeOverview.totalCount }} 段记忆 · 波动 {{ activeOverview.volatility }}</div>
+    </div>
+
+    <div class="pointer-events-none absolute inset-0" data-testid="garden-diorama-labels">
+      <div class="garden-chip garden-chip-happy">😊 开心</div>
+      <div class="garden-chip garden-chip-memory">⭐ 重要回忆</div>
+      <div class="garden-chip garden-chip-calm">平静</div>
+      <div class="garden-chip garden-chip-transform">工作压力 → 正在转化</div>
     </div>
 
     <div
@@ -31,7 +39,7 @@
       class="pointer-events-none absolute bottom-4 left-1/2 max-w-sm -translate-x-1/2 border-[2px] border-pencil bg-white/92 px-4 py-3 text-center shadow-hard-sm backdrop-blur wobbly-sm"
     >
       <div class="text-base font-bold" style="font-family: 'Kalam', cursive;">{{ hoveredPlant.title }}</div>
-      <div class="text-sm text-pencil/70">{{ hoveredPlant.moodLabel }} · 情绪 {{ hoveredPlant.moodScore }}</div>
+      <div class="text-sm text-pencil/70">{{ hoveredPlant.themeLabel || hoveredPlant.moodLabel }} · {{ hoveredPlant.zoneLabel || '记忆植物' }}</div>
     </div>
 
     <div
@@ -47,23 +55,76 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 
-const PLOT_WIDTH = 16
-const PLOT_DEPTH = 10
-const CAMERA_LIMITS = {
-  minDistance: 3.4,
-  maxDistance: 34,
-  minPolarAngle: Math.PI * 0.08,
-  maxPolarAngle: Math.PI * 0.84,
-  focusCompleteDistance: 0.07
-}
+const PLOT_WIDTH = 8.5
+const PLOT_DEPTH = 5
+const FRUSTUM_SIZE = 7.2
 const CLICK_DRAG_THRESHOLD = 4
-const HOME_CAMERA_POSITION = new THREE.Vector3(0, 6.4, 12.6)
-const HOME_LOOK_AT = new THREE.Vector3(0, 0.62, 0)
-const OUTLINE_COLOR = '#2d2d2d'
+const HOME_CAMERA_POSITION = new THREE.Vector3(5.8, 5.0, 6.4)
+const HOME_LOOK_AT = new THREE.Vector3(0, 0.35, 0)
+const OUTLINE_COLOR = '#2f2a22'
+
+const ZONE_FOCUS = {
+  cheerfulFlowerZone: {
+    camera: new THREE.Vector3(4.7, 4.4, 5.3),
+    target: new THREE.Vector3(-2.45, 0.4, 0.18),
+    zoom: 1.18
+  },
+  memoryTreeZone: {
+    camera: new THREE.Vector3(5.25, 4.7, 5.85),
+    target: new THREE.Vector3(0.05, 0.82, -0.46),
+    zoom: 1.2
+  },
+  calmPondZone: {
+    camera: new THREE.Vector3(5.9, 4.55, 5.25),
+    target: new THREE.Vector3(2.55, 0.36, 0.32),
+    zoom: 1.16
+  },
+  transformingVinesZone: {
+    camera: new THREE.Vector3(5.1, 4.25, 5.45),
+    target: new THREE.Vector3(-0.2, 0.28, 1.45),
+    zoom: 1.18
+  }
+}
+
+const DEFAULT_CLIMATE = {
+  type: 'breezy',
+  icon: '🌤️',
+  label: '微风晴间多云',
+  summary: '适合回顾与整理，情绪趋于平稳。',
+  skyColor: '#c9e6ef',
+  horizonColor: '#fff0c8',
+  groundTint: '#cfe7a3',
+  lightColor: '#ffe9b6',
+  sunlightIntensity: 2.75,
+  fogColor: '#fff8ec',
+  fogNear: 15,
+  fogFar: 36,
+  windSpeed: 0.8,
+  rainIntensity: 0,
+  mistIntensity: 0.12,
+  leafDrift: 0.62
+}
+
+const PALETTE = {
+  cream: '#fff4d8',
+  paper: '#fffbec',
+  grass: '#cfe7a3',
+  grassDark: '#8fb56b',
+  warmSoil: '#f4c36d',
+  yellow: '#ffdf6b',
+  flowerWhite: '#fffbf1',
+  pondBlue: '#9edff0',
+  pondDeep: '#6eb7cf',
+  vineBlue: '#8fa8ad',
+  vineDark: '#637f83',
+  wood: '#b9823f',
+  ink: '#2f2a22',
+  glow: '#ffd66b'
+}
 
 const props = defineProps({
   plants: {
@@ -77,6 +138,10 @@ const props = defineProps({
   selectedPlantId: {
     type: [String, Number],
     default: null
+  },
+  world: {
+    type: Object,
+    default: null
   }
 })
 
@@ -86,6 +151,9 @@ const container = ref(null)
 const hoveredPlant = ref(null)
 const webglError = ref('')
 
+const activeClimate = computed(() => currentWorld().climate)
+const activeOverview = computed(() => currentWorld().overview)
+
 let renderer
 let scene
 let camera
@@ -94,16 +162,39 @@ let raycaster
 let pointer
 let animationId
 let staticRoot
-let plantsRoot
+let weatherRoot
 let resizeObserver
+let hemiLight
+let sunLight
+let fillLight
 let targetCameraPosition
 let targetLookAt
+let targetZoom = 1
 let selectedPlantId = null
+let selectedZoneKey = null
 let autoFocusActive = false
 let pointerDownPosition = null
 let pointerMovedBeyondClick = false
 let suppressNextNullSelectionSync = false
+let interactiveMeshes = []
+const zoneRoots = new Map()
+const zoneHighlights = new Map()
 const clock = new THREE.Clock()
+
+function currentWorld() {
+  return {
+    plants: props.world?.plants || props.plants || [],
+    overview: props.world?.overview || props.overview || { totalCount: 0, avgScore: '0.0', volatility: '0.0', statusText: '需要浇水', statusEmoji: '🌱' },
+    climate: props.world?.climate || DEFAULT_CLIMATE,
+    zones: props.world?.zones || [],
+    timeLayers: props.world?.timeLayers || [],
+    landmarks: props.world?.landmarks || []
+  }
+}
+
+function scenePlants() {
+  return currentWorld().plants || []
+}
 
 function webglAvailable() {
   try {
@@ -117,18 +208,19 @@ function webglAvailable() {
 function initScene() {
   if (!container.value) return
   if (!webglAvailable()) {
-    webglError.value = '当前环境没有可用 WebGL，因此先展示温柔的降级提示；在正常浏览器里会渲染可交互的 3D 花园。'
+    webglError.value = '当前环境没有可用 WebGL，因此先展示温柔的降级提示；在正常浏览器里会渲染固定构图的 3D 纸模花园。'
     return
   }
 
   scene = new THREE.Scene()
-  scene.background = new THREE.Color('#fff8ec')
-  scene.fog = new THREE.Fog('#fff8ec', 18, 54)
+  applyClimateToScene()
 
-  camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100)
+  camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100)
   camera.position.copy(HOME_CAMERA_POSITION)
+  camera.lookAt(HOME_LOOK_AT)
   targetCameraPosition = HOME_CAMERA_POSITION.clone()
   targetLookAt = HOME_LOOK_AT.clone()
+  targetZoom = 1
 
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
@@ -141,12 +233,13 @@ function initScene() {
   container.value.appendChild(renderer.domElement)
 
   controls = new OrbitControls(camera, renderer.domElement)
+  controls.enableRotate = false
+  controls.enablePan = false
+  controls.enableZoom = true
+  controls.minZoom = 0.85
+  controls.maxZoom = 1.45
   controls.enableDamping = true
   controls.dampingFactor = 0.08
-  controls.minDistance = CAMERA_LIMITS.minDistance
-  controls.maxDistance = CAMERA_LIMITS.maxDistance
-  controls.minPolarAngle = CAMERA_LIMITS.minPolarAngle
-  controls.maxPolarAngle = CAMERA_LIMITS.maxPolarAngle
   controls.target.copy(targetLookAt)
   controls.addEventListener('start', stopAutoFocus)
 
@@ -156,12 +249,7 @@ function initScene() {
   addLights()
   staticRoot = new THREE.Group()
   scene.add(staticRoot)
-  addLayeredTerrain()
-  addGardenDecor()
-
-  plantsRoot = new THREE.Group()
-  scene.add(plantsRoot)
-  rebuildPlants()
+  rebuildStaticScene()
   resizeRenderer()
 
   renderer.domElement.addEventListener('pointermove', handlePointerMove)
@@ -180,25 +268,45 @@ function initScene() {
   animate()
 }
 
+function applyClimateToScene() {
+  if (!scene) return
+  const climate = currentWorld().climate
+  scene.background = new THREE.Color(climate.skyColor || '#c9e6ef')
+  scene.fog = new THREE.Fog(climate.fogColor || '#fff8ec', climate.fogNear || 15, climate.fogFar || 36)
+  updateLights()
+}
+
 function addLights() {
-  const hemi = new THREE.HemisphereLight('#fff4cf', '#8fbf8f', 2.7)
-  scene.add(hemi)
+  const climate = currentWorld().climate
+  hemiLight = new THREE.HemisphereLight('#fff7d7', '#88a979', 2.35)
+  scene.add(hemiLight)
 
-  const sun = new THREE.DirectionalLight('#fff0b8', 2.8)
-  sun.position.set(-5.5, 9.5, 6.2)
-  sun.castShadow = true
-  sun.shadow.mapSize.set(1536, 1536)
-  sun.shadow.camera.near = 1
-  sun.shadow.camera.far = 28
-  sun.shadow.camera.left = -12
-  sun.shadow.camera.right = 12
-  sun.shadow.camera.top = 12
-  sun.shadow.camera.bottom = -12
-  scene.add(sun)
+  sunLight = new THREE.DirectionalLight(climate.lightColor || '#ffe9b6', climate.sunlightIntensity || 2.75)
+  sunLight.position.set(-4.5, 8.5, 5.5)
+  sunLight.castShadow = true
+  sunLight.shadow.mapSize.set(1536, 1536)
+  sunLight.shadow.camera.near = 1
+  sunLight.shadow.camera.far = 24
+  sunLight.shadow.camera.left = -8
+  sunLight.shadow.camera.right = 8
+  sunLight.shadow.camera.top = 8
+  sunLight.shadow.camera.bottom = -8
+  scene.add(sunLight)
 
-  const fill = new THREE.PointLight('#ffd8ea', 1.2, 18)
-  fill.position.set(5, 4, -4)
-  scene.add(fill)
+  fillLight = new THREE.PointLight('#ffd8ea', 0.82, 13)
+  fillLight.position.set(3, 3.5, 2)
+  scene.add(fillLight)
+  updateLights()
+}
+
+function updateLights() {
+  const climate = currentWorld().climate
+  if (hemiLight) hemiLight.intensity = climate.type === 'rainy' ? 1.8 : 2.35
+  if (sunLight) {
+    sunLight.color = new THREE.Color(climate.lightColor || '#ffe9b6')
+    sunLight.intensity = climate.sunlightIntensity || 2.75
+  }
+  if (fillLight) fillLight.intensity = climate.type === 'sunny' ? 1.0 : 0.75
 }
 
 function toonMaterial(color, options = {}) {
@@ -212,14 +320,15 @@ function toonMaterial(color, options = {}) {
   })
 }
 
-function outlineMaterial() {
-  return new THREE.MeshBasicMaterial({
-    color: OUTLINE_COLOR,
-    side: THREE.BackSide
-  })
+function lineMaterial(color = PALETTE.ink, opacity = 0.45) {
+  return new THREE.LineBasicMaterial({ color, transparent: true, opacity })
 }
 
-function addOutlinedMesh(parent, mesh, outlineScale = 1.035) {
+function outlineMaterial() {
+  return new THREE.MeshBasicMaterial({ color: OUTLINE_COLOR, side: THREE.BackSide })
+}
+
+function addOutlinedMesh(parent, mesh, outlineScale = 1.028) {
   mesh.castShadow = true
   mesh.receiveShadow = true
   parent.add(mesh)
@@ -234,6 +343,13 @@ function addOutlinedMesh(parent, mesh, outlineScale = 1.035) {
   return mesh
 }
 
+function addInkOutline(mesh, color = PALETTE.ink, opacity = 0.45) {
+  const edges = new THREE.EdgesGeometry(mesh.geometry)
+  const line = new THREE.LineSegments(edges, lineMaterial(color, opacity))
+  mesh.add(line)
+  return mesh
+}
+
 function seededRandom(seed) {
   let t = (seed + 0x6D2B79F5) >>> 0
   t = Math.imul(t ^ (t >>> 15), t | 1)
@@ -241,387 +357,581 @@ function seededRandom(seed) {
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296
 }
 
-function makePaperShape(width, depth, seed = 1, wobble = 0.25) {
+function makePaperShape(width, depth, seed = 1, wobble = 0.18) {
   const points = []
-  const steps = 5
+  const steps = 6
   for (let i = 0; i <= steps; i++) points.push(new THREE.Vector2(-width / 2 + (width * i) / steps, -depth / 2 + wobble * (seededRandom(seed + i) - 0.5)))
   for (let i = 1; i <= steps; i++) points.push(new THREE.Vector2(width / 2 + wobble * (seededRandom(seed + 20 + i) - 0.5), -depth / 2 + (depth * i) / steps))
   for (let i = 1; i <= steps; i++) points.push(new THREE.Vector2(width / 2 - (width * i) / steps, depth / 2 + wobble * (seededRandom(seed + 40 + i) - 0.5)))
   for (let i = 1; i < steps; i++) points.push(new THREE.Vector2(-width / 2 + wobble * (seededRandom(seed + 60 + i) - 0.5), depth / 2 - (depth * i) / steps))
+  return new THREE.Shape(points)
+}
 
-  const shape = new THREE.Shape(points)
-  const geometry = new THREE.ExtrudeGeometry(shape, { depth: 0.18, bevelEnabled: false })
+function makeFlatPaperGeometry(width, depth, seed, wobble = 0.18) {
+  const geometry = new THREE.ShapeGeometry(makePaperShape(width, depth, seed, wobble))
   geometry.rotateX(-Math.PI / 2)
-  geometry.translate(0, -0.09, 0)
   return geometry
 }
 
-function addLayeredTerrain() {
-  const base = new THREE.Mesh(makePaperShape(PLOT_WIDTH + 2.2, PLOT_DEPTH + 2.1, 10, 0.38), toonMaterial('#b8ec80'))
-  base.position.y = -0.18
-  addOutlinedMesh(staticRoot, base, 1.01)
-
-  const paperEdge = new THREE.Mesh(makePaperShape(PLOT_WIDTH + 1.35, PLOT_DEPTH + 1.25, 24, 0.28), toonMaterial('#f7e7c8'))
-  paperEdge.position.y = -0.06
-  addOutlinedMesh(staticRoot, paperEdge, 1.012)
-
-  const soil = new THREE.Mesh(makePaperShape(PLOT_WIDTH - 1.2, PLOT_DEPTH - 1.2, 36, 0.32), toonMaterial('#c99a5c'))
-  soil.position.y = 0.03
-  addOutlinedMesh(staticRoot, soil, 1.012)
-
-  const leftBed = new THREE.Mesh(makePaperShape(4.1, 2.6, 71, 0.22), toonMaterial('#d7b06b'))
-  leftBed.position.set(-4.9, 0.16, 1.2)
-  addOutlinedMesh(staticRoot, leftBed, 1.02)
-
-  const rightBed = new THREE.Mesh(makePaperShape(4.8, 2.45, 83, 0.22), toonMaterial('#d6ad6a'))
-  rightBed.position.set(3.3, 0.17, 1.7)
-  addOutlinedMesh(staticRoot, rightBed, 1.02)
-
-  addCurvedPath()
-  addPond()
-  addFence()
-  addSignBoard()
+function makeExtrudedPaperGeometry(width, depth, seed, thickness = 0.14, wobble = 0.18) {
+  const geometry = new THREE.ExtrudeGeometry(makePaperShape(width, depth, seed, wobble), { depth: thickness, bevelEnabled: false })
+  geometry.rotateX(-Math.PI / 2)
+  geometry.translate(0, -thickness / 2, 0)
+  return geometry
 }
 
-function addCurvedPath() {
-  const curve = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(-7.1, 0.23, 4.0),
-    new THREE.Vector3(-4.1, 0.24, 2.3),
-    new THREE.Vector3(-2.4, 0.25, 0.2),
-    new THREE.Vector3(0.4, 0.24, -1.1),
-    new THREE.Vector3(3.5, 0.24, -2.7),
-    new THREE.Vector3(6.8, 0.24, -3.5)
-  ])
-  const path = new THREE.Mesh(new THREE.TubeGeometry(curve, 44, 0.36, 10, false), toonMaterial('#fff4a5'))
-  path.scale.y = 0.18
-  addOutlinedMesh(staticRoot, path, 1.018)
-
-  for (let i = 0; i < 12; i++) {
-    const point = curve.getPoint(i / 11)
-    const marker = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.05, 0.09), toonMaterial(i % 2 ? '#f1cf78' : '#ffeab0'))
-    marker.position.set(point.x, point.y + 0.09, point.z)
-    marker.rotation.y = seededRandom(200 + i) * Math.PI
-    staticRoot.add(marker)
-  }
+function rebuildStaticScene() {
+  if (!staticRoot) return
+  disposeGroup(staticRoot)
+  staticRoot.clear()
+  interactiveMeshes = []
+  zoneRoots.clear()
+  zoneHighlights.clear()
+  weatherRoot = null
+  applyClimateToScene()
+  staticRoot.add(createGardenDioramaScene())
 }
 
-function addPond() {
-  const pond = new THREE.Mesh(
-    new THREE.CylinderGeometry(1.05, 1.15, 0.08, 36),
-    toonMaterial('#8fd4ff', { emissive: '#4aaee8', emissiveIntensity: 0.16 })
-  )
-  pond.position.set(4.7, 0.28, -0.6)
-  pond.scale.z = 0.62
-  addOutlinedMesh(staticRoot, pond, 1.04)
-
-  const shine = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.025, 0.08), toonMaterial('#dff7ff'))
-  shine.position.set(4.45, 0.36, -0.82)
-  shine.rotation.y = -0.15
-  staticRoot.add(shine)
-}
-
-function addGardenDecor() {
-  const stoneMat = toonMaterial('#d8d0c2')
-  for (let i = 0; i < 26; i++) {
-    const x = -7 + seededRandom(400 + i) * 14
-    const z = -4.2 + seededRandom(600 + i) * 8.4
-    if (Math.abs(x) < 1.1 && z < 1.5 && z > -3.3) continue
-    const stone = new THREE.Mesh(new THREE.SphereGeometry(0.09 + seededRandom(800 + i) * 0.08, 8, 5), stoneMat)
-    stone.scale.y = 0.28
-    stone.position.set(x, 0.31, z)
-    stone.rotation.y = seededRandom(900 + i) * Math.PI
-    staticRoot.add(stone)
-  }
-
-  const scrapColors = ['#fff9c4', '#ffd6e7', '#d7f7a8', '#d8ecff']
-  for (let i = 0; i < 10; i++) {
-    const scrap = new THREE.Mesh(
-      new THREE.BoxGeometry(0.42, 0.025, 0.26),
-      toonMaterial(scrapColors[i % scrapColors.length])
-    )
-    scrap.position.set(-7 + seededRandom(1200 + i) * 14, 0.34, -4.2 + seededRandom(1400 + i) * 8.4)
-    scrap.rotation.y = seededRandom(1600 + i) * Math.PI
-    staticRoot.add(scrap)
-  }
-}
-
-function addFence() {
-  const postMat = toonMaterial('#8b5a2b')
-  const railMat = toonMaterial('#d9973a')
-  const postGeo = new THREE.BoxGeometry(0.18, 0.72, 0.18)
-  const railGeoX = new THREE.BoxGeometry(1.08, 0.13, 0.12)
-  const railGeoZ = new THREE.BoxGeometry(0.12, 0.13, 1.08)
-  const y = 0.54
-  const minX = -PLOT_WIDTH / 2 - 0.48
-  const maxX = PLOT_WIDTH / 2 + 0.48
-  const minZ = -PLOT_DEPTH / 2 - 0.46
-  const maxZ = PLOT_DEPTH / 2 + 0.46
-
-  for (let x = minX; x <= maxX + 0.01; x += 1.25) {
-    addFencePost(x, minZ)
-    addFencePost(x, maxZ)
-    addFenceRail(x, minZ, true)
-    addFenceRail(x, maxZ, true)
-  }
-  for (let z = minZ; z <= maxZ + 0.01; z += 1.25) {
-    addFencePost(minX, z)
-    addFencePost(maxX, z)
-    addFenceRail(minX, z, false)
-    addFenceRail(maxX, z, false)
-  }
-
-  function addFencePost(x, z) {
-    const post = new THREE.Mesh(postGeo, postMat)
-    post.position.set(x, y, z)
-    post.rotation.z = (seededRandom(Math.round((x + z) * 1000)) - 0.5) * 0.12
-    staticRoot.add(post)
-  }
-
-  function addFenceRail(x, z, alongX) {
-    const rail = new THREE.Mesh(alongX ? railGeoX : railGeoZ, railMat)
-    rail.position.set(x, y + 0.12, z)
-    rail.rotation.y = alongX ? 0 : Math.PI / 2
-    staticRoot.add(rail)
-  }
-}
-
-function addSignBoard() {
-  const sign = new THREE.Group()
-  const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.05, 0.16), toonMaterial('#7a4d28'))
-  post.position.y = 0.58
-  const board = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.72, 0.12), toonMaterial('#fff0a8'))
-  board.position.y = 1.22
-  const pin = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), toonMaterial('#ff4d4d'))
-  pin.position.set(-0.9, 1.34, 0.08)
-  sign.add(post, board, pin)
-  sign.position.set(-6.55, 0.1, -3.85)
-  sign.rotation.y = 0.34
-  staticRoot.add(sign)
-}
-
-function rebuildPlants() {
-  if (!plantsRoot) return
-  disposeGroup(plantsRoot)
-  plantsRoot.clear()
-  props.plants.forEach((plant) => {
-    plantsRoot.add(createPlantGroup(plant))
-  })
-}
-
-function createPlantGroup(plant) {
-  const group = new THREE.Group()
-  group.userData.plant = plant
-  group.userData.seed = Number(plant.id?.split('').reduce((sum, c) => sum + c.charCodeAt(0), 0) || 1)
-  group.position.set(plant.x - PLOT_WIDTH / 2, 0.33, plant.z - PLOT_DEPTH / 2)
-  group.rotation.y = THREE.MathUtils.degToRad(plant.rotationY || 0)
-
-  const selectionRing = createSelectionRing(plant)
-  group.userData.selectionRing = selectionRing
-  group.add(selectionRing)
-
-  addPlantBed(group, plant)
-  if (plant.modelType === 'sunflower') addSunflower(group, plant)
-  else if (plant.modelType === 'leafBloom' || plant.modelType === 'flower') addBloomCluster(group, plant)
-  else if (plant.modelType === 'sprout') addSprout(group, plant)
-  else if (plant.modelType === 'duskLeaf') addDuskLeaf(group, plant)
-  else addCactus(group, plant)
-  addPlantTag(group, plant)
-
-  const sparkles = createSparkles(plant)
-  group.userData.sparkles = sparkles
-  group.add(sparkles)
-
-  group.traverse((child) => {
-    if (child.isMesh) {
-      child.castShadow = true
-      child.receiveShadow = true
-      child.userData.plant = plant
-    }
-  })
-
-  return group
-}
-
-function createSelectionRing(plant) {
-  const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(0.58, 0.025, 8, 48),
-    toonMaterial(plant.accentColor || '#fff9c4', { transparent: true, opacity: 0.0, emissive: plant.accentColor || '#fff9c4', emissiveIntensity: 0.18 })
-  )
-  ring.name = 'selectionRing'
-  ring.rotation.x = Math.PI / 2
-  ring.position.y = 0.08
-  ring.visible = false
-  return ring
-}
-
-function createSparkles(plant) {
+function createGardenDioramaScene() {
   const root = new THREE.Group()
-  root.name = 'confettiRoot'
-  root.visible = false
-  const colors = [plant.accentColor || '#fff9c4', plant.primaryColor || '#ffd166', '#ffffff', '#ffb7c8']
-  for (let i = 0; i < 8; i++) {
-    const petal = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.018, 0.2), toonMaterial(colors[i % colors.length], { transparent: true, opacity: 0.9 }))
-    const angle = (i / 8) * Math.PI * 2
-    petal.position.set(Math.cos(angle) * 0.88, 0.55 + (i % 3) * 0.13, Math.sin(angle) * 0.88)
-    petal.rotation.set(0.4, angle, 0.6)
-    root.add(petal)
-  }
+  root.name = 'gardenDioramaScene'
+  root.add(createPaperTray())
+  root.add(createWeatherLayer())
+  root.add(createGroundPatches())
+  root.add(createStonePath())
+  root.add(createCheerfulFlowerZone())
+  root.add(createMemoryTreeZone())
+  root.add(createCalmPondZone())
+  root.add(createTransformingVinesZone())
+  root.add(createFloatingDetails())
   return root
 }
 
-function addPlantBed(group, plant) {
-  const bedColors = {
-    round: '#b88352',
-    ribbon: '#d8b36f',
-    patch: '#9fcf73',
-    stone: '#d5c9b8'
-  }
-  const color = bedColors[plant.bedType] || '#b88352'
-  const bed = new THREE.Mesh(new THREE.CylinderGeometry(0.66, 0.76, 0.16, plant.bedType === 'stone' ? 10 : 20), toonMaterial(color))
-  bed.name = 'plantBed'
-  bed.position.y = 0.04
-  bed.scale.z = plant.bedType === 'ribbon' ? 0.62 : 0.82
-  addOutlinedMesh(group, bed, 1.025)
+function createPaperTray() {
+  const tray = new THREE.Group()
+  tray.name = 'paperTray'
+  const base = new THREE.Mesh(new THREE.BoxGeometry(PLOT_WIDTH + 1.1, 0.34, PLOT_DEPTH + 0.82), toonMaterial(PALETTE.cream))
+  base.position.y = -0.28
+  addInkOutline(base, PALETTE.ink, 0.38)
+  addOutlinedMesh(tray, base, 1.008)
+
+  const floor = new THREE.Mesh(makeExtrudedPaperGeometry(PLOT_WIDTH, PLOT_DEPTH, 12, 0.1, 0.16), toonMaterial(PALETTE.paper))
+  floor.position.y = -0.04
+  addOutlinedMesh(tray, floor, 1.012)
+
+  const rimMat = toonMaterial('#fff7dd')
+  const rimGeoX = new THREE.BoxGeometry(PLOT_WIDTH + 0.8, 0.38, 0.24)
+  const rimGeoZ = new THREE.BoxGeometry(0.24, 0.38, PLOT_DEPTH + 0.62)
+  const rimY = 0.06
+  const rims = [
+    [new THREE.Mesh(rimGeoX, rimMat), 0, rimY, -PLOT_DEPTH / 2 - 0.24],
+    [new THREE.Mesh(rimGeoX, rimMat), 0, rimY, PLOT_DEPTH / 2 + 0.24],
+    [new THREE.Mesh(rimGeoZ, rimMat), -PLOT_WIDTH / 2 - 0.28, rimY, 0],
+    [new THREE.Mesh(rimGeoZ, rimMat), PLOT_WIDTH / 2 + 0.28, rimY, 0]
+  ]
+  rims.forEach(([rim, x, y, z]) => {
+    rim.position.set(x, y, z)
+    addInkOutline(rim, PALETTE.ink, 0.34)
+    addOutlinedMesh(tray, rim, 1.01)
+  })
+  return tray
 }
 
-function addStem(group, height, color = '#3d8b46', curve = 0.12) {
-  const path = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(0, 0.1, 0),
-    new THREE.Vector3(curve, height * 0.42, 0.03),
-    new THREE.Vector3(-curve * 0.35, height * 0.76, -0.02),
-    new THREE.Vector3(0, height, 0)
-  ])
-  const stem = new THREE.Mesh(new THREE.TubeGeometry(path, 12, 0.045, 8, false), toonMaterial(color))
-  addOutlinedMesh(group, stem, 1.04)
-  return stem
+function createGroundPatches() {
+  const group = new THREE.Group()
+  group.name = 'groundPatches'
+  const grass = new THREE.Mesh(makeExtrudedPaperGeometry(PLOT_WIDTH - 0.55, PLOT_DEPTH - 0.46, 31, 0.08, 0.2), toonMaterial(PALETTE.grass))
+  grass.position.y = 0.05
+  addOutlinedMesh(group, grass, 1.01)
+
+  addPatch(group, 'cheerfulPatch', -2.7, 0.12, 2.4, 1.65, PALETTE.warmSoil, 51, 0.78)
+  addPatch(group, 'pondPatch', 2.6, 0.28, 2.55, 1.82, '#b8d9cc', 71, 0.72)
+  addPatch(group, 'vinePatch', -0.16, 1.53, 3.25, 1.2, PALETTE.vineBlue, 91, 0.86)
+  addPatch(group, 'treePatch', 0.0, -0.62, 2.1, 1.55, '#b8d58b', 111, 0.72)
+  return group
 }
 
-function addLeaves(group, plant, height, options = {}) {
-  const leafMat = toonMaterial(options.color || '#4fa85b')
-  const count = Math.max(plant.leafCount || 4, 2)
-  const leafGeo = new THREE.SphereGeometry(0.22, 12, 8)
-  for (let i = 0; i < count; i++) {
-    const side = i % 2 === 0 ? -1 : 1
-    const leaf = new THREE.Mesh(leafGeo, leafMat)
-    leaf.position.set(side * (0.16 + (i % 3) * 0.05), 0.3 + (height * (i + 1)) / (count + 2), 0)
-    leaf.scale.set(1.05, 0.2, 0.46)
-    leaf.rotation.set(0.14, 0, side * (0.75 + i * 0.06))
-    addOutlinedMesh(group, leaf, 1.035)
-  }
-}
-
-function addSunflower(group, plant) {
-  const height = Number(plant.height || 2.2)
-  addStem(group, height, '#3f9149', 0.08)
-  addLeaves(group, plant, height)
-  addFlowerHead(group, plant, height + 0.12, 0.42, 0.22)
-}
-
-function addBloomCluster(group, plant) {
-  const height = Number(plant.height || 1.6)
-  addStem(group, height, '#3f9149', 0.12)
-  addLeaves(group, plant, height, { color: '#5eaa63' })
-  addFlowerHead(group, plant, height + 0.05, 0.29, 0.16)
-  for (const [x, y, scale] of [[-0.36, height * 0.78, 0.72], [0.34, height * 0.68, 0.64]]) {
-    const mini = new THREE.Group()
-    mini.position.set(x, y, 0)
-    mini.scale.setScalar(scale)
-    group.add(mini)
-    addFlowerHead(mini, plant, 0, 0.24, 0.12)
-  }
-}
-
-function addSprout(group, plant) {
-  const height = Number(plant.height || 1.1)
-  addStem(group, height * 0.72, '#3f9149', 0.07)
-  addLeaves(group, { ...plant, leafCount: Math.max(plant.leafCount || 4, 6) }, height, { color: '#66b95d' })
-  const bud = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 8), toonMaterial(plant.accentColor || '#d7f7a8', { emissive: plant.accentColor || '#d7f7a8', emissiveIntensity: 0.08 }))
-  bud.position.y = height * 0.82
-  addOutlinedMesh(group, bud, 1.05)
-}
-
-function addDuskLeaf(group, plant) {
-  const leafGeo = new THREE.SphereGeometry(0.34, 14, 8)
-  for (let i = 0; i < Math.max(plant.leafCount || 5, 5); i++) {
-    const angle = -0.9 + i * 0.45
-    const leaf = new THREE.Mesh(leafGeo, toonMaterial(i % 2 ? plant.primaryColor : plant.accentColor))
-    leaf.position.set(Math.sin(angle) * 0.3, 0.35 + i * 0.08, Math.cos(angle) * 0.08)
-    leaf.scale.set(0.48, 1.02, 0.18)
-    leaf.rotation.set(0.2, angle, -0.55 + i * 0.2)
-    addOutlinedMesh(group, leaf, 1.035)
-  }
-}
-
-function addCactus(group, plant) {
-  const height = Number(plant.height || 0.8)
-  const cactusMat = toonMaterial(plant.primaryColor || '#5f9ea0')
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.23, height, 6, 12), cactusMat)
-  body.position.y = height / 2 + 0.24
-  addOutlinedMesh(group, body, 1.035)
-
-  for (const side of [-1, 1]) {
-    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.42, 5, 8), cactusMat)
-    arm.position.set(side * 0.23, height * 0.74, 0)
-    arm.rotation.z = side * 0.92
-    addOutlinedMesh(group, arm, 1.04)
-  }
-
-  const bud = new THREE.Mesh(
-    new THREE.SphereGeometry(0.12, 12, 8),
-    toonMaterial(plant.accentColor || '#c78dd7', { emissive: plant.accentColor || '#c78dd7', emissiveIntensity: 0.08 })
+function addPatch(parent, name, x, z, width, depth, color, seed, opacity = 1) {
+  const patch = new THREE.Mesh(
+    makeExtrudedPaperGeometry(width, depth, seed, 0.055, 0.22),
+    toonMaterial(color, { transparent: opacity < 1, opacity })
   )
-  bud.position.y = height + 0.58
-  addOutlinedMesh(group, bud, 1.05)
+  patch.name = name
+  patch.position.set(x, 0.14, z)
+  addOutlinedMesh(parent, patch, 1.012)
 }
 
-function addFlowerHead(group, plant, y, radius, centerRadius) {
-  const petalCount = Math.max(plant.petalCount || 5, 4)
-  const petalLayers = Math.max(plant.petalLayers || 1, 1)
-  const flowerHead = new THREE.Group()
-  flowerHead.position.y = y
+function createStonePath() {
+  const group = new THREE.Group()
+  group.name = 'stonePath'
+  addSteppingStones(group, [
+    new THREE.Vector3(-0.35, 0.24, 2.42),
+    new THREE.Vector3(-0.24, 0.25, 1.67),
+    new THREE.Vector3(-0.08, 0.25, 0.78),
+    new THREE.Vector3(0.0, 0.25, -0.34)
+  ], 15, 240)
+  addSteppingStones(group, [
+    new THREE.Vector3(-0.06, 0.26, -0.3),
+    new THREE.Vector3(-0.9, 0.26, -0.05),
+    new THREE.Vector3(-1.75, 0.26, 0.08),
+    new THREE.Vector3(-2.75, 0.26, 0.18)
+  ], 11, 320)
+  addSteppingStones(group, [
+    new THREE.Vector3(0.1, 0.26, -0.28),
+    new THREE.Vector3(0.96, 0.26, -0.04),
+    new THREE.Vector3(1.74, 0.26, 0.14),
+    new THREE.Vector3(2.62, 0.26, 0.28)
+  ], 11, 390)
+  return group
+}
 
-  for (let layer = 0; layer < petalLayers; layer++) {
-    const layerRadius = radius * (1 - layer * 0.12)
-    const layerScale = (plant.petalScale || 1) * (1 - layer * 0.08)
-    for (let i = 0; i < petalCount; i++) {
-      const angle = ((i + layer * 0.5) / petalCount) * Math.PI * 2
-      const color = layer % 2 ? (plant.accentColor || plant.primaryColor) : plant.primaryColor
-      const petal = new THREE.Mesh(new THREE.SphereGeometry(0.18 * layerScale, 16, 10), toonMaterial(color, {
-        emissive: color,
-        emissiveIntensity: Math.min(Number(plant.glowIntensity || 0) * 0.12, 0.16)
-      }))
-      petal.position.set(Math.cos(angle) * layerRadius, Math.sin(angle) * layerRadius, -layer * 0.015)
-      petal.scale.set(0.7, 1.22, 0.2)
-      petal.rotation.z = angle
-      addOutlinedMesh(flowerHead, petal, 1.025)
+function addSteppingStones(parent, points, count, seedBase) {
+  const curve = new THREE.CatmullRomCurve3(points)
+  const colors = ['#efe2ca', '#d8cdb8', '#ead8b7', '#f4ead5']
+  for (let i = 0; i < count; i++) {
+    const point = curve.getPoint(count === 1 ? 0 : i / (count - 1))
+    const stone = new THREE.Mesh(new THREE.CylinderGeometry(0.12 + seededRandom(seedBase + i) * 0.07, 0.15 + seededRandom(seedBase + 80 + i) * 0.08, 0.045, 9), toonMaterial(colors[i % colors.length]))
+    stone.name = 'steppingStone'
+    stone.position.copy(point)
+    stone.scale.z = 0.62 + seededRandom(seedBase + 160 + i) * 0.38
+    stone.rotation.y = seededRandom(seedBase + 240 + i) * Math.PI
+    addInkOutline(stone, PALETTE.ink, 0.26)
+    parent.add(stone)
+  }
+}
+
+function createCheerfulFlowerZone() {
+  const group = new THREE.Group()
+  group.name = 'cheerfulFlowerZone'
+  group.position.set(-2.7, 0.22, 0.22)
+  const plant = zonePlant('cheerfulFlowerZone')
+  group.userData.plant = plant
+
+  const flowerCount = Math.min(120, 72 + Math.max(0, activeOverview.value.totalCount || 0) * 8)
+  const stemMat = toonMaterial('#5f9a46')
+  const centerMat = toonMaterial('#9b6b2d')
+  const petalMats = [toonMaterial(PALETTE.yellow), toonMaterial('#fff0a6'), toonMaterial(PALETTE.flowerWhite)]
+
+  for (let i = 0; i < flowerCount; i++) {
+    const x = -0.93 + seededRandom(500 + i) * 1.86
+    const z = -0.56 + seededRandom(700 + i) * 1.12
+    const height = 0.18 + seededRandom(900 + i) * 0.34
+    const flower = new THREE.Group()
+    flower.name = 'cheerfulTinyFlower'
+    flower.position.set(x, 0, z)
+    flower.rotation.y = seededRandom(1100 + i) * Math.PI
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.018, height, 5), stemMat)
+    stem.position.y = height / 2
+    flower.add(stem)
+    const center = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), centerMat)
+    center.position.y = height + 0.03
+    center.scale.y = 0.45
+    flower.add(center)
+    for (let p = 0; p < 5; p++) {
+      const angle = (p / 5) * Math.PI * 2
+      const petal = new THREE.Mesh(new THREE.SphereGeometry(0.034, 8, 5), petalMats[(i + p) % petalMats.length])
+      petal.position.set(Math.cos(angle) * 0.055, height + 0.035 + Math.sin(angle) * 0.004, Math.sin(angle) * 0.055)
+      petal.scale.set(1.15, 0.36, 0.72)
+      flower.add(petal)
+    }
+    makeInteractive(flower, plant)
+    group.add(flower)
+  }
+
+  addSemiFence(group, 1.12, 0.74, plant)
+  addPaperNote(group, -0.66, 0.26, 0.84, 'happySign', plant)
+  addZoneHighlight(group, 'cheerfulFlowerZone', 1.2, 0.72)
+  return group
+}
+
+function addSemiFence(parent, radiusX, radiusZ, plant) {
+  const postMat = toonMaterial(PALETTE.wood)
+  const railMat = toonMaterial('#d49a4a')
+  for (let i = 0; i < 15; i++) {
+    const angle = Math.PI * (0.1 + (i / 14) * 0.9)
+    const x = Math.cos(angle) * radiusX
+    const z = Math.sin(angle) * radiusZ - 0.05
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.36, 0.055), postMat)
+    post.position.set(x, 0.18, z)
+    post.rotation.z = (seededRandom(1400 + i) - 0.5) * 0.15
+    makeInteractive(post, plant)
+    parent.add(post)
+  }
+  for (let i = 0; i < 10; i++) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.035, 0.04), railMat)
+    const angle = Math.PI * (0.15 + (i / 9) * 0.8)
+    rail.position.set(Math.cos(angle) * radiusX, 0.28, Math.sin(angle) * radiusZ - 0.05)
+    rail.rotation.y = -angle
+    makeInteractive(rail, plant)
+    parent.add(rail)
+  }
+}
+
+function createMemoryTreeZone() {
+  const group = new THREE.Group()
+  group.name = 'memoryTreeZone'
+  group.position.set(0, 0.24, -0.48)
+  const plant = zonePlant('memoryTreeZone')
+  group.userData.plant = plant
+
+  const trunkMat = toonMaterial('#8b5a2b')
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, 1.26, 8), trunkMat)
+  trunk.position.y = 0.68
+  addInkOutline(trunk, PALETTE.ink, 0.42)
+  addOutlinedMesh(group, trunk, 1.026)
+
+  for (let i = 0; i < 5; i++) {
+    const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.062, 0.76, 6), trunkMat)
+    branch.position.set((i % 2 ? 0.22 : -0.22), 0.98 + i * 0.08, 0)
+    branch.rotation.z = (i % 2 ? -0.72 : 0.72)
+    branch.rotation.y = i * 0.62
+    addOutlinedMesh(group, branch, 1.02)
+  }
+
+  const leafColors = ['#6f9a55', '#7ea85b', '#97bd6e', '#b5ce7a']
+  for (let i = 0; i < 18; i++) {
+    const leaf = new THREE.Mesh(
+      new THREE.SphereGeometry(0.26 + seededRandom(1700 + i) * 0.1, 12, 8),
+      toonMaterial(leafColors[i % leafColors.length])
+    )
+    const angle = (i / 18) * Math.PI * 2
+    leaf.position.set(Math.cos(angle) * (0.42 + seededRandom(1710 + i) * 0.48), 1.24 + seededRandom(1720 + i) * 0.68, Math.sin(angle) * 0.32)
+    leaf.scale.set(1.08, 0.74, 0.82)
+    addOutlinedMesh(group, leaf, 1.018)
+  }
+
+  for (let i = 0; i < 5; i++) {
+    const glow = new THREE.Mesh(
+      new THREE.SphereGeometry(0.06, 12, 8),
+      toonMaterial(PALETTE.glow, { emissive: PALETTE.glow, emissiveIntensity: 0.62 })
+    )
+    glow.name = 'memoryGlow'
+    glow.position.set(-0.36 + i * 0.18, 1.16 + (i % 2) * 0.33, 0.32)
+    group.add(glow)
+    if (i < 3) {
+      const light = new THREE.PointLight(PALETTE.glow, 0.18, 1.2)
+      light.position.copy(glow.position)
+      group.add(light)
     }
   }
 
-  const center = new THREE.Mesh(new THREE.SphereGeometry(centerRadius, 18, 12), toonMaterial(plant.secondaryColor || '#8b5a2b'))
-  center.scale.z = 0.55
-  addOutlinedMesh(flowerHead, center, 1.03)
-  group.add(flowerHead)
+  addPaperNote(group, -0.48, 0.16, 0.68, 'memoryBook', plant)
+  addBench(group, 0.38, 0.12, 0.58, plant)
+  addZoneHighlight(group, 'memoryTreeZone', 0.9, 0.68)
+  makeInteractive(group, plant)
+  return group
 }
 
-function addPlantTag(group, plant) {
-  const tag = new THREE.Group()
-  tag.name = 'plantTag'
-  const post = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.36, 0.045), toonMaterial('#7a4d28'))
-  post.position.y = 0.2
-  const board = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.2, 0.045), toonMaterial('#fff9c4'))
-  board.position.y = 0.42
-  tag.add(post, board)
-  tag.position.set(0.48, 0.06, 0.36)
-  tag.rotation.y = -0.35
-  tag.userData.plant = plant
-  group.add(tag)
+function addBench(parent, x, y, z, plant) {
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.07, 0.16), toonMaterial('#d8b36f'))
+  seat.position.set(x, y + 0.16, z)
+  addInkOutline(seat, PALETTE.ink, 0.3)
+  makeInteractive(seat, plant)
+  parent.add(seat)
+  for (const dx of [-0.16, 0.16]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.18, 0.045), toonMaterial(PALETTE.wood))
+    leg.position.set(x + dx, y + 0.06, z)
+    makeInteractive(leg, plant)
+    parent.add(leg)
+  }
+}
+
+function createCalmPondZone() {
+  const group = new THREE.Group()
+  group.name = 'calmPondZone'
+  group.position.set(2.6, 0.22, 0.25)
+  const plant = zonePlant('calmPondZone')
+  group.userData.plant = plant
+
+  const water = new THREE.Mesh(makeFlatPaperGeometry(1.72, 1.12, 2100, 0.26), toonMaterial(PALETTE.pondBlue, { transparent: true, opacity: 0.9, emissive: PALETTE.pondDeep, emissiveIntensity: 0.08 }))
+  water.name = 'calmPondWater'
+  water.position.y = 0.08
+  addOutlinedMesh(group, water, 1.018)
+  makeInteractive(water, plant)
+
+  for (let i = 0; i < 18; i++) {
+    const angle = (i / 18) * Math.PI * 2
+    const stone = new THREE.Mesh(new THREE.SphereGeometry(0.075 + seededRandom(2200 + i) * 0.045, 8, 5), toonMaterial(i % 2 ? '#d8cdb8' : '#efe2ca'))
+    stone.name = 'pondStone'
+    stone.scale.y = 0.28
+    stone.position.set(Math.cos(angle) * (0.9 + seededRandom(2300 + i) * 0.18), 0.15, Math.sin(angle) * (0.56 + seededRandom(2400 + i) * 0.12))
+    makeInteractive(stone, plant)
+    group.add(stone)
+  }
+
+  for (let i = 0; i < 7; i++) {
+    const lily = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.12, 0.018, 12), toonMaterial(i % 2 ? '#8fb56b' : '#a9cc7c'))
+    lily.name = 'pondLilyPad'
+    lily.position.set(-0.54 + seededRandom(2500 + i) * 1.1, 0.17, -0.32 + seededRandom(2600 + i) * 0.66)
+    lily.scale.z = 0.56
+    lily.rotation.y = seededRandom(2700 + i) * Math.PI
+    makeInteractive(lily, plant)
+    group.add(lily)
+  }
+
+  for (let i = 0; i < 3; i++) {
+    const ripple = new THREE.Mesh(new THREE.TorusGeometry(0.26 + i * 0.15, 0.008, 6, 48), toonMaterial('#ffffff', { transparent: true, opacity: 0.72 }))
+    ripple.name = 'pondRipple'
+    ripple.rotation.x = Math.PI / 2
+    ripple.scale.z = 0.56
+    ripple.position.set(-0.12 + i * 0.2, 0.19, -0.02 + i * 0.08)
+    group.add(ripple)
+  }
+
+  addPaperBoat(group, 0.38, 0.24, -0.04, plant)
+  addZoneHighlight(group, 'calmPondZone', 0.96, 0.62)
+  return group
+}
+
+function addPaperBoat(parent, x, y, z, plant) {
+  const boat = new THREE.Group()
+  boat.name = 'paperBoat'
+  boat.position.set(x, y, z)
+  const hull = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.42, 4), toonMaterial(PALETTE.paper))
+  hull.rotation.set(Math.PI / 2, 0, Math.PI / 4)
+  hull.scale.z = 0.42
+  boat.add(hull)
+  const sail = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.28, 3), toonMaterial('#fff9c4'))
+  sail.position.set(0.02, 0.12, 0)
+  sail.rotation.z = -0.26
+  boat.add(sail)
+  makeInteractive(boat, plant)
+  parent.add(boat)
+}
+
+function createTransformingVinesZone() {
+  const group = new THREE.Group()
+  group.name = 'transformingVinesZone'
+  group.position.set(-0.2, 0.23, 1.52)
+  const plant = zonePlant('transformingVinesZone')
+  group.userData.plant = plant
+
+  for (let i = 0; i < 34; i++) {
+    const startX = -1.25 + seededRandom(3000 + i) * 2.5
+    const startZ = -0.42 + seededRandom(3100 + i) * 0.84
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(startX, 0.13, startZ),
+      new THREE.Vector3(startX + (seededRandom(3200 + i) - 0.5) * 0.36, 0.18, startZ + 0.14),
+      new THREE.Vector3(startX + (seededRandom(3300 + i) - 0.5) * 0.52, 0.17, startZ + 0.32)
+    ])
+    const vine = new THREE.Mesh(new THREE.TubeGeometry(curve, 8, 0.014, 6, false), toonMaterial(i % 2 ? PALETTE.vineDark : '#7f989c'))
+    vine.name = 'transformingVine'
+    makeInteractive(vine, plant)
+    group.add(vine)
+    if (i % 3 === 0) addTinyWhiteFlower(group, curve.getPoint(0.85), plant)
+  }
+
+  for (let i = 0; i < 12; i++) {
+    const stone = new THREE.Mesh(new THREE.SphereGeometry(0.055 + seededRandom(3400 + i) * 0.04, 8, 5), toonMaterial('#b9bec0'))
+    stone.name = 'transformStone'
+    stone.scale.y = 0.32
+    stone.position.set(-1.34 + seededRandom(3500 + i) * 2.68, 0.13, -0.48 + seededRandom(3600 + i) * 0.96)
+    makeInteractive(stone, plant)
+    group.add(stone)
+  }
+
+  addPaperNote(group, 0.68, 0.17, 0.48, 'transformNote', plant)
+  addZoneHighlight(group, 'transformingVinesZone', 1.52, 0.52)
+  return group
+}
+
+function addTinyWhiteFlower(parent, point, plant) {
+  const flower = new THREE.Group()
+  flower.name = 'tinyTransformFlower'
+  flower.position.copy(point)
+  for (let p = 0; p < 5; p++) {
+    const angle = (p / 5) * Math.PI * 2
+    const petal = new THREE.Mesh(new THREE.SphereGeometry(0.026, 7, 5), toonMaterial(PALETTE.flowerWhite))
+    petal.position.set(Math.cos(angle) * 0.04, 0.04, Math.sin(angle) * 0.04)
+    petal.scale.y = 0.35
+    flower.add(petal)
+  }
+  const center = new THREE.Mesh(new THREE.SphereGeometry(0.018, 7, 5), toonMaterial('#f2d26f'))
+  center.position.y = 0.042
+  flower.add(center)
+  makeInteractive(flower, plant)
+  parent.add(flower)
+}
+
+function addPaperNote(parent, x, y, z, name, plant) {
+  const note = new THREE.Group()
+  note.name = name
+  note.position.set(x, y, z)
+  note.rotation.set(-0.18, -0.2, 0.08)
+  const post = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.28, 0.035), toonMaterial(PALETTE.wood))
+  post.position.y = 0.08
+  const board = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.26, 0.035), toonMaterial('#fff9c4'))
+  board.position.y = 0.27
+  addInkOutline(board, PALETTE.ink, 0.3)
+  note.add(post, board)
+  makeInteractive(note, plant)
+  parent.add(note)
+}
+
+function createWeatherLayer() {
+  const climate = currentWorld().climate
+  weatherRoot = new THREE.Group()
+  weatherRoot.name = 'weatherLayer'
+  weatherRoot.position.set(0, 0, 0)
+
+  const sky = new THREE.Mesh(new THREE.PlaneGeometry(PLOT_WIDTH + 0.7, 2.2), toonMaterial(climate.horizonColor || '#fff0c8', { transparent: true, opacity: 0.66, side: THREE.DoubleSide }))
+  sky.name = 'paperSkyBackdrop'
+  sky.position.set(0, 2.25, -PLOT_DEPTH / 2 - 0.35)
+  weatherRoot.add(sky)
+
+  const sun = new THREE.Mesh(new THREE.SphereGeometry(0.28, 18, 12), toonMaterial(PALETTE.glow, { emissive: PALETTE.glow, emissiveIntensity: 0.36 }))
+  sun.name = 'paperSun'
+  sun.scale.z = 0.18
+  sun.position.set(-3.25, 2.62, -PLOT_DEPTH / 2 - 0.18)
+  addOutlinedMesh(weatherRoot, sun, 1.025)
+
+  addPaperCloud(weatherRoot, -2.25, 2.43, -PLOT_DEPTH / 2 - 0.13, 0.52, 4100)
+  addPaperCloud(weatherRoot, 2.25, 2.55, -PLOT_DEPTH / 2 - 0.14, 0.66, 4200)
+  addPaperCloud(weatherRoot, 0.95, 2.22, -PLOT_DEPTH / 2 - 0.12, 0.42, 4300)
+  addWindLines(weatherRoot)
+  return weatherRoot
+}
+
+function addPaperCloud(parent, x, y, z, scale, seed) {
+  const group = new THREE.Group()
+  group.name = 'paperCloud'
+  group.userData.kind = 'cloud'
+  group.userData.seed = seed
+  group.position.set(x, y, z)
+  const mat = toonMaterial('#ffffff', { transparent: true, opacity: 0.9 })
+  for (let i = 0; i < 4; i++) {
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(0.22 + i * 0.025, 12, 7), mat)
+    puff.position.set((i - 1.5) * 0.23, Math.sin(i) * 0.05, 0)
+    puff.scale.set(1.2, 0.55, 0.18)
+    group.add(puff)
+  }
+  group.scale.setScalar(scale)
+  parent.add(group)
+}
+
+function addWindLines(parent) {
+  for (let i = 0; i < 5; i++) {
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-2.2 + i * 0.8, 1.72 + (i % 2) * 0.2, -2.25),
+      new THREE.Vector3(-1.92 + i * 0.8, 1.77 + (i % 2) * 0.2, -2.25),
+      new THREE.Vector3(-1.58 + i * 0.8, 1.72 + (i % 2) * 0.2, -2.25)
+    ])
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(20)), lineMaterial('#ffffff', 0.68))
+    line.name = 'paperWindLine'
+    parent.add(line)
+  }
+}
+
+function createFloatingDetails() {
+  const group = new THREE.Group()
+  group.name = 'floatingDetails'
+  const count = Math.round(8 + (currentWorld().climate.leafDrift || 0.5) * 12)
+  for (let i = 0; i < count; i++) {
+    const petal = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.012, 0.15), toonMaterial(i % 2 ? '#fff9c4' : '#ffffff', { transparent: true, opacity: 0.86 }))
+    petal.name = 'floatingPetal'
+    petal.position.set(-3.8 + seededRandom(4500 + i) * 7.6, 0.86 + seededRandom(4600 + i) * 1.1, -1.75 + seededRandom(4700 + i) * 3.7)
+    petal.rotation.set(0.5, seededRandom(4800 + i) * Math.PI, 0.7)
+    petal.userData.kind = 'petal'
+    petal.userData.seed = i
+    group.add(petal)
+  }
+  return group
+}
+
+function addZoneHighlight(parent, zoneKey, width, depth) {
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.018, 6, 48), toonMaterial('#fff3a8', { transparent: true, opacity: 0.0, emissive: '#fff3a8', emissiveIntensity: 0.28 }))
+  ring.name = `${zoneKey}SelectionRing`
+  ring.rotation.x = Math.PI / 2
+  ring.position.y = 0.1
+  ring.scale.set(width, depth, 1)
+  ring.userData.baseScaleX = width
+  ring.userData.baseScaleY = depth
+  ring.visible = false
+  parent.add(ring)
+  zoneHighlights.set(zoneKey, ring)
+  zoneRoots.set(zoneKey, parent)
+}
+
+function makeInteractive(object, plant) {
+  object.traverse((child) => {
+    if (child.isMesh || child.isLine || child.isLineSegments) {
+      child.userData.plant = plant
+      interactiveMeshes.push(child)
+    }
+  })
+}
+
+function zonePlant(zoneKey) {
+  const plants = scenePlants()
+  const synthetic = {
+    id: `zone-${zoneKey}`,
+    sourceType: 'zone',
+    title: {
+      cheerfulFlowerZone: '开心花田',
+      memoryTreeZone: '重要回忆树',
+      calmPondZone: '平静池塘',
+      transformingVinesZone: '工作压力正在转化'
+    }[zoneKey],
+    content: {
+      cheerfulFlowerZone: '一片明亮花田，安放高能量和开心的记忆。',
+      memoryTreeZone: '花园中央的记忆树，承载最值得回看的片段。',
+      calmPondZone: '平静的水域，给情绪留出可呼吸的空间。',
+      transformingVinesZone: '困难情绪没有被删除，而是在慢慢开出小白花。'
+    }[zoneKey],
+    contentPreview: {
+      cheerfulFlowerZone: '一片明亮花田，安放高能量和开心的记忆。',
+      memoryTreeZone: '花园中央的记忆树，承载最值得回看的片段。',
+      calmPondZone: '平静的水域，给情绪留出可呼吸的空间。',
+      transformingVinesZone: '困难情绪没有被删除，而是在慢慢开出小白花。'
+    }[zoneKey],
+    moodScore: Number(activeOverview.value.avgScore || 0),
+    moodLabel: activeClimate.value.label,
+    themeLabel: {
+      cheerfulFlowerZone: '高能量',
+      memoryTreeZone: '重要回忆',
+      calmPondZone: '平静',
+      transformingVinesZone: '正在转化'
+    }[zoneKey],
+    zoneKey,
+    zoneLabel: '沙盘区域',
+    modelType: zoneKey === 'calmPondZone' ? 'sprout' : 'leafBloom',
+    growthStory: {
+      cheerfulFlowerZone: '开心的记忆在这里聚成花田。',
+      memoryTreeZone: '重要记忆在这里沉淀成树。',
+      calmPondZone: '平静情绪在这里变成水面。',
+      transformingVinesZone: '压力和低落在这里被安放，并慢慢转化。'
+    }[zoneKey]
+  }
+
+  if (zoneKey === 'cheerfulFlowerZone') {
+    return plants.find(plant => Number(plant.moodScore || 0) >= 75) || synthetic
+  }
+  if (zoneKey === 'memoryTreeZone') {
+    return plants.find(plant => Number(plant.memoryWeight || 0) >= 2.05) || plants[0] || synthetic
+  }
+  if (zoneKey === 'calmPondZone') {
+    return plants.find(plant => plant.themeKey === 'rest' || (Number(plant.moodScore || 0) >= 40 && Number(plant.moodScore || 0) < 75)) || synthetic
+  }
+  if (zoneKey === 'transformingVinesZone') {
+    return plants.find(plant => plant.themeKey === 'work' || Number(plant.moodScore || 0) <= 35) || synthetic
+  }
+  return synthetic
+}
+
+function zoneKeyForPlant(plant) {
+  if (plant?.zoneKey) return plant.zoneKey
+  if (plant?.themeKey === 'work' || Number(plant?.moodScore || 0) <= 35) return 'transformingVinesZone'
+  if (plant?.themeKey === 'rest' || (Number(plant?.moodScore || 0) >= 40 && Number(plant?.moodScore || 0) < 75)) return 'calmPondZone'
+  if (Number(plant?.memoryWeight || 0) >= 2.05) return 'memoryTreeZone'
+  if (Number(plant?.moodScore || 0) >= 75) return 'cheerfulFlowerZone'
+  return 'memoryTreeZone'
 }
 
 function handlePointerMove(event) {
   const hit = pickPlant(event)
   hoveredPlant.value = hit?.userData?.plant || null
   if (renderer?.domElement) {
-    renderer.domElement.style.cursor = hoveredPlant.value ? 'pointer' : 'grab'
+    renderer.domElement.style.cursor = hoveredPlant.value ? 'pointer' : 'zoom-in'
   }
 }
 
@@ -676,26 +986,29 @@ function handleClick(event) {
 }
 
 function pickPlant(event) {
-  if (!renderer || !camera || !plantsRoot) return null
+  if (!renderer || !camera || !interactiveMeshes.length) return null
   const rect = renderer.domElement.getBoundingClientRect()
   pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
   pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
   raycaster.setFromCamera(pointer, camera)
-  const hits = raycaster.intersectObjects(plantsRoot.children, true)
+  const hits = raycaster.intersectObjects(interactiveMeshes, true)
   return hits.find((hit) => hit.object.userData?.plant)?.object || null
 }
 
 function focusPlant(plant) {
-  const x = plant.x - PLOT_WIDTH / 2
-  const z = plant.z - PLOT_DEPTH / 2
-  targetLookAt = new THREE.Vector3(x + 0.9, Math.max((plant.height || 1.2) * 0.72, 1.0), z)
-  targetCameraPosition = new THREE.Vector3(x + 4.25, 4.05, z + 5.05)
+  const zoneKey = zoneKeyForPlant(plant)
+  selectedZoneKey = zoneKey
+  const focus = ZONE_FOCUS[zoneKey] || ZONE_FOCUS.memoryTreeZone
+  targetCameraPosition = focus.camera.clone()
+  targetLookAt = focus.target.clone()
+  targetZoom = focus.zoom
   autoFocusActive = true
 }
 
 function resetToOverview() {
   targetCameraPosition = HOME_CAMERA_POSITION.clone()
   targetLookAt = HOME_LOOK_AT.clone()
+  targetZoom = 1
   autoFocusActive = true
 }
 
@@ -705,6 +1018,7 @@ function stopAutoFocus() {
 
 function clearSelection({ notify = false, resetView = true } = {}) {
   selectedPlantId = null
+  selectedZoneKey = null
   if (resetView) resetToOverview()
   if (notify) {
     suppressNextNullSelectionSync = true
@@ -723,54 +1037,67 @@ function syncSelectedPlant(plantId, options = {}) {
     return
   }
 
-  const plant = props.plants.find(item => String(item.id) === String(plantId))
+  const plant = scenePlants().find(item => String(item.id) === String(plantId))
   selectedPlantId = plantId
+  if (plant) selectedZoneKey = zoneKeyForPlant(plant)
   if (plant && options.focus !== false) focusPlant(plant)
+}
+
+function animateDiorama(elapsed) {
+  if (weatherRoot) {
+    weatherRoot.traverse((child) => {
+      if (child.userData.kind === 'cloud') {
+        child.position.x += Math.sin(elapsed * 0.18 + child.userData.seed) * 0.0009
+      }
+      if (child.userData.kind === 'petal') {
+        child.position.x += 0.004 * (currentWorld().climate.windSpeed || 0.8)
+        child.position.y += Math.sin(elapsed * 0.8 + child.userData.seed) * 0.0015
+        child.rotation.z += 0.008
+        if (child.position.x > 4.0) child.position.x = -4.0
+      }
+    })
+  }
+
+  zoneHighlights.forEach((ring, zoneKey) => {
+    const active = selectedZoneKey === zoneKey
+    const hovered = hoveredPlant.value && zoneKeyForPlant(hoveredPlant.value) === zoneKey
+    const visible = active || hovered
+    ring.visible = visible
+    ring.material.opacity = THREE.MathUtils.lerp(ring.material.opacity || 0, visible ? 0.68 : 0, 0.14)
+    ring.scale.z = 1
+    const pulse = 1 + Math.sin(elapsed * 2.6) * 0.03
+    ring.scale.x = ring.userData.baseScaleX * pulse
+    ring.scale.y = ring.userData.baseScaleY * pulse
+  })
+
+  staticRoot?.traverse((child) => {
+    if (child.name === 'memoryGlow') {
+      child.position.y += Math.sin(elapsed * 1.2 + child.id) * 0.0008
+      if (child.material) child.material.emissiveIntensity = 0.48 + Math.sin(elapsed * 1.4 + child.id) * 0.12
+    }
+    if (child.name === 'pondRipple') {
+      const scale = 1 + Math.sin(elapsed * 0.9 + child.id) * 0.035
+      child.scale.x = scale
+      child.scale.y = scale
+    }
+  })
 }
 
 function animate() {
   animationId = window.requestAnimationFrame(animate)
   const elapsed = clock.getElapsedTime()
-
-  if (plantsRoot) {
-    plantsRoot.children.forEach((group) => {
-      const plant = group.userData.plant
-      const seed = group.userData.seed || 1
-      const hovered = hoveredPlant.value?.id === plant.id
-      const selected = selectedPlantId === plant.id
-      const active = hovered || selected
-      const targetScale = selected ? (plant.focusScale || 1.18) : hovered ? 1.12 : 1
-      group.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.12)
-      group.position.y = 0.33 + Math.sin(elapsed * (plant.swaySpeed || 1) + seed) * (active ? 0.052 : 0.03)
-      group.rotation.z = Math.sin(elapsed * ((plant.swaySpeed || 1) * 0.65) + seed) * (active ? 0.045 : 0.024)
-
-      const ring = group.userData.selectionRing
-      if (ring) {
-        ring.visible = active
-        ring.material.opacity = THREE.MathUtils.lerp(ring.material.opacity || 0, active ? 0.82 : 0, 0.16)
-        const pulse = 1 + Math.sin(elapsed * 3.2 + seed) * (plant.pulseIntensity || 0.15) * 0.2
-        ring.scale.setScalar(active ? pulse : 1)
-      }
-
-      const sparkles = group.userData.sparkles
-      if (sparkles) {
-        sparkles.visible = selected
-        sparkles.rotation.y += selected ? 0.018 : 0
-        sparkles.children.forEach((child, index) => {
-          child.position.y += Math.sin(elapsed * 1.8 + index) * 0.0007
-          child.rotation.z += selected ? 0.012 + index * 0.001 : 0
-        })
-      }
-    })
-  }
+  animateDiorama(elapsed)
 
   if (camera && controls) {
     if (autoFocusActive) {
-      camera.position.lerp(targetCameraPosition, 0.04)
+      camera.position.lerp(targetCameraPosition, 0.045)
       controls.target.lerp(targetLookAt, 0.06)
+      camera.zoom = THREE.MathUtils.lerp(camera.zoom, targetZoom, 0.055)
+      camera.updateProjectionMatrix()
       if (
-        camera.position.distanceTo(targetCameraPosition) < CAMERA_LIMITS.focusCompleteDistance &&
-        controls.target.distanceTo(targetLookAt) < CAMERA_LIMITS.focusCompleteDistance
+        camera.position.distanceTo(targetCameraPosition) < 0.04 &&
+        controls.target.distanceTo(targetLookAt) < 0.04 &&
+        Math.abs(camera.zoom - targetZoom) < 0.01
       ) {
         autoFocusActive = false
       }
@@ -785,9 +1112,13 @@ function resizeRenderer() {
   if (!container.value || !renderer || !camera) return
   const width = container.value.clientWidth || 1
   const height = container.value.clientHeight || 1
-  renderer.setSize(width, height, false)
-  camera.aspect = width / height
+  const aspect = width / height
+  camera.left = (FRUSTUM_SIZE * aspect) / -2
+  camera.right = (FRUSTUM_SIZE * aspect) / 2
+  camera.top = FRUSTUM_SIZE / 2
+  camera.bottom = FRUSTUM_SIZE / -2
   camera.updateProjectionMatrix()
+  renderer.setSize(width, height, false)
 }
 
 function disposeGroup(group) {
@@ -816,7 +1147,6 @@ function cleanup() {
   }
   window.removeEventListener('keydown', handleKeydown)
   controls?.removeEventListener('start', stopAutoFocus)
-  if (plantsRoot) disposeGroup(plantsRoot)
   if (staticRoot) disposeGroup(staticRoot)
   if (renderer) {
     renderer.dispose()
@@ -825,11 +1155,67 @@ function cleanup() {
 }
 
 watch(() => props.plants, () => {
-  rebuildPlants()
+  rebuildStaticScene()
   if (props.selectedPlantId) syncSelectedPlant(props.selectedPlantId, { focus: false })
 }, { deep: true })
+
+watch(() => props.world, () => {
+  rebuildStaticScene()
+  if (props.selectedPlantId) syncSelectedPlant(props.selectedPlantId, { focus: false })
+}, { deep: true })
+
 watch(() => props.selectedPlantId, (plantId) => syncSelectedPlant(plantId))
 
 onMounted(initScene)
 onBeforeUnmount(cleanup)
 </script>
+
+<style scoped>
+.garden-chip {
+  position: absolute;
+  padding: 6px 12px;
+  border: 1.5px solid rgba(42, 38, 30, 0.55);
+  border-radius: 999px;
+  background: rgba(255, 250, 232, 0.92);
+  box-shadow: 0 4px 10px rgba(50, 40, 20, 0.12);
+  color: #2f2a22;
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.garden-chip-happy {
+  left: 22%;
+  top: 38%;
+  transform: rotate(-2deg);
+}
+
+.garden-chip-memory {
+  left: 49%;
+  top: 30%;
+  transform: translateX(-50%) rotate(1deg);
+}
+
+.garden-chip-calm {
+  right: 21%;
+  top: 44%;
+  transform: rotate(-1deg);
+}
+
+.garden-chip-transform {
+  left: 48%;
+  bottom: 26%;
+  transform: translateX(-50%) rotate(1deg);
+}
+
+@media (max-width: 768px) {
+  .garden-chip {
+    font-size: 11px;
+    padding: 5px 9px;
+  }
+
+  .garden-chip-transform {
+    bottom: 22%;
+  }
+}
+</style>

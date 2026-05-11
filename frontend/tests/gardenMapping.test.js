@@ -4,7 +4,12 @@ import {
   moodToPlantProfile,
   createGardenPlants,
   buildGardenOverview,
-  describePlantGrowth
+  describePlantGrowth,
+  buildGardenClimate,
+  buildGardenZones,
+  buildGardenTimeLayers,
+  buildGardenLandmarks,
+  buildGardenWorld
 } from '../src/utils/gardenMapping'
 
 /* ===================================================================
@@ -253,6 +258,19 @@ describe('createGardenPlants', () => {
     })
   })
 
+  test('world-level theme and time fields are deterministic for the same input', () => {
+    const plants1 = createGardenPlants(sampleItems)
+    const plants2 = createGardenPlants(sampleItems)
+
+    plants1.forEach((plant, index) => {
+      expect(plant.themeKey).toBe(plants2[index].themeKey)
+      expect(plant.themeLabel).toBe(plants2[index].themeLabel)
+      expect(plant.timeLayer).toBe(plants2[index].timeLayer)
+      expect(plant.ageDays).toBe(plants2[index].ageDays)
+      expect(plant.memoryWeight).toBe(plants2[index].memoryWeight)
+    })
+  })
+
   test('bedType is one of the supported immersive garden base types', () => {
     const plants = createGardenPlants(sampleItems)
     const allowed = ['round', 'ribbon', 'patch', 'stone']
@@ -376,6 +394,72 @@ describe('buildGardenOverview', () => {
     const overview = buildGardenOverview([])
     expect(overview.totalCount).toBe(0)
     expect(overview.avgScore).toBe('0.0')
+  })
+})
+
+describe('buildGardenWorld', () => {
+  const worldItems = [
+    { id: '1', title: '工作压力', content: '今天项目会议很多，压力很大', mood_score: 30, created_at: '2026-05-01' },
+    { id: '2', title: '公园散步', content: '出门散步看到了很好的风景', mood_score: 70, created_at: '2026-05-05' },
+    { id: '3', title: '目标完成', content: '坚持练习后终于完成了目标', mood_score: 85, created_at: '2026-05-08' }
+  ]
+
+  test('buildGardenClimate maps overview score into a visible weather system', () => {
+    const plants = createGardenPlants(worldItems)
+    const overview = buildGardenOverview(plants)
+    const climate = buildGardenClimate(plants, overview)
+
+    expect(climate).toHaveProperty('type')
+    expect(climate).toHaveProperty('label')
+    expect(climate).toHaveProperty('skyColor')
+    expect(climate).toHaveProperty('windSpeed')
+    expect(climate).toHaveProperty('rainIntensity')
+  })
+
+  test('buildGardenZones derives stable theme zones from diary content', () => {
+    const plants = createGardenPlants(worldItems)
+    const zones1 = buildGardenZones(plants)
+    const zones2 = buildGardenZones(plants)
+
+    expect(zones1.length).toBeGreaterThan(0)
+    expect(zones1).toEqual(zones2)
+    expect(zones1.map(zone => zone.key)).toEqual(expect.arrayContaining(['work', 'rest', 'growth']))
+  })
+
+  test('buildGardenTimeLayers groups memories by deterministic age from latest diary date', () => {
+    const plants = createGardenPlants([
+      { id: 'old', title: '旧日', content: '一年前的回忆', mood_score: 65, created_at: '2026-04-01' },
+      { id: 'new', title: '今天', content: '今天的记录', mood_score: 65, created_at: '2026-05-08' }
+    ])
+    const layers = buildGardenTimeLayers(plants)
+
+    expect(layers.find(layer => layer.key === 'fresh').count).toBe(1)
+    expect(layers.find(layer => layer.key === 'archived').count).toBe(1)
+  })
+
+  test('buildGardenWorld returns stable plants, overview, climate, zones and timeLayers', () => {
+    const world1 = buildGardenWorld(worldItems)
+    const world2 = buildGardenWorld(worldItems)
+
+    expect(world1).toEqual(world2)
+    expect(world1.plants).toHaveLength(3)
+    expect(world1.overview.totalCount).toBe(3)
+    expect(world1.climate.label).toBeTruthy()
+    expect(world1.zones.length).toBeGreaterThan(0)
+    expect(world1.timeLayers).toHaveLength(3)
+    expect(Array.isArray(world1.landmarks)).toBe(true)
+    expect(world1.narration).toMatch(/花园|记忆|气候|晴|云|雾|雨/)
+  })
+
+  test('buildGardenLandmarks promotes old or strong memories into stable landmarks', () => {
+    const plants = createGardenPlants([
+      { id: 'old', title: '旧日', content: '很久以前的重要记忆', mood_score: 65, created_at: '2026-03-01' },
+      { id: 'bright', title: '高光', content: '今天非常开心，完成了一个目标', mood_score: 90, created_at: '2026-05-08' }
+    ])
+    const landmarks = buildGardenLandmarks(plants)
+
+    expect(landmarks.length).toBeGreaterThan(0)
+    expect(landmarks.map(landmark => landmark.type)).toEqual(expect.arrayContaining(['memory_stone', 'glowing_tree']))
   })
 })
 

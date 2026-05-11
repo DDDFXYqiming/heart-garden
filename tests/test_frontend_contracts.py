@@ -114,6 +114,17 @@ def test_get_diaries_accepts_filters_parameter():
     assert "...filters" in source or "filters" in source
 
 
+def test_garden_world_api_wrapper_exists_for_immersive_scene():
+    """前端必须通过兼容 world 接口获取花园生态数据。"""
+    source = API_INDEX.read_text(encoding="utf-8")
+    garden_source = (VIEWS_DIR / "GardenPage.vue").read_text(encoding="utf-8")
+
+    assert "export function getGardenWorld()" in source
+    assert "api.get('/garden/world')" in source
+    assert "getGardenWorld" in garden_source
+    assert "buildGardenWorld" in garden_source
+
+
 def test_diary_list_has_search_placeholder():
     """DiaryList.vue 必须包含搜索占位文字 '搜索日记'"""
     source = DIARY_LIST.read_text(encoding="utf-8")

@@ -128,6 +128,10 @@ export function getGarden() {
   return api.get('/garden')
 }
 
+export function getGardenWorld() {
+  return api.get('/garden/world')
+}
+
 export function getCustomWords() {
   return api.get('/mood/words')
 }
