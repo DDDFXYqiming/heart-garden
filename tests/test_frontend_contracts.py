@@ -8,6 +8,7 @@ import re
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CHAT_PAGE = PROJECT_ROOT / "frontend" / "src" / "views" / "ChatPage.vue"
+APP_PAGE = PROJECT_ROOT / "frontend" / "src" / "App.vue"
 SETTINGS_PAGE = PROJECT_ROOT / "frontend" / "src" / "views" / "SettingsPage.vue"
 STATS_PAGE = PROJECT_ROOT / "frontend" / "src" / "views" / "StatsPage.vue"
 API_INDEX = PROJECT_ROOT / "frontend" / "src" / "api" / "index.js"
@@ -88,6 +89,22 @@ def test_router_guard_is_explicit_and_dev_bypass_is_intentional():
     assert re.search(r"(?m)^router\.beforeEach\(", source)
     assert "const publicPages" in source
     assert "import.meta.env.DEV" in source
+
+
+def test_app_nav_marks_current_section_with_hand_drawn_active_state():
+    """顶部导航必须能标记当前一级页面，并保留手绘贴纸式 active 样式。"""
+    source = APP_PAGE.read_text(encoding="utf-8")
+    script = _script_setup(source)
+
+    assert "useRoute" in script
+    assert "navItems" in script
+    assert "function isNavActive" in script
+    assert "aria-current" in source
+    assert "nav-link-active" in source
+    assert "bg-sticky" in source
+    assert "border-[2px] border-pencil" in source
+    assert "DiaryNew" in source
+    assert "DiaryEdit" in source
 
 
 def test_get_diaries_accepts_filters_parameter():
