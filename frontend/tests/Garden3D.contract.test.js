@@ -34,22 +34,39 @@ describe('3D garden MVP contract', () => {
     expect(source).toContain('function focusPlant')
     expect(source).toContain('function clearSelection')
     expect(source).toContain('function handleWheel')
+    expect(source).toContain('function addLayeredTerrain')
+    expect(source).toContain('function addCurvedPath')
+    expect(source).toContain('function createSelectionRing')
+    expect(source).toContain('function createSparkles')
     expect(source).toContain('autoFocusActive')
     expect(source).toContain('stopAutoFocus')
     expect(source).toContain('data-testid="garden-scene"')
   })
 
-  test('GardenScene keeps camera controls free after focus and supports wider zoom/orbit bounds', () => {
+  test('GardenScene keeps camera controls free after focus and uses a closer immersive camera', () => {
     const source = readFrontendFile('src/components/garden/GardenScene.vue')
 
     expect(source).toContain('CAMERA_LIMITS')
-    expect(source).toContain('minDistance: 2.8')
-    expect(source).toContain('maxDistance: 48')
-    expect(source).toContain('maxPolarAngle: Math.PI * 0.92')
+    expect(source).toContain('minDistance: 3.4')
+    expect(source).toContain('maxDistance: 34')
+    expect(source).toContain('maxPolarAngle: Math.PI * 0.84')
+    expect(source).toContain('HOME_CAMERA_POSITION = new THREE.Vector3(0, 6.4, 12.6)')
     expect(source).toContain('controls.addEventListener(\'start\', stopAutoFocus)')
     expect(source).toContain("renderer.domElement.addEventListener('wheel', handleWheel)")
     expect(source).toContain('event.deltaY > 0')
     expect(source).toContain('clearSelection({ notify: true, resetView: false })')
+  })
+
+  test('GardenScene includes paper-model terrain and selected plant effects', () => {
+    const source = readFrontendFile('src/components/garden/GardenScene.vue')
+
+    expect(source).toContain('makePaperShape')
+    expect(source).toContain('addGardenDecor')
+    expect(source).toContain('plantBed')
+    expect(source).toContain('selectionRing')
+    expect(source).toContain('confettiRoot')
+    expect(source).toContain('focusScale')
+    expect(source).toContain('pulseIntensity')
   })
 
   test('GardenScene pins the WebGL canvas to the visible container to keep the plot centered', () => {

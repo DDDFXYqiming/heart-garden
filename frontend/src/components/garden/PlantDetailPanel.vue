@@ -1,78 +1,77 @@
 <template>
-  <div
+  <aside
     v-if="plant"
     data-testid="detail-panel"
-    class="fixed inset-y-0 right-0 w-full max-w-md bg-white/95 backdrop-blur-sm border-l-[3px] border-pencil shadow-hard z-50 overflow-y-auto"
+    class="fixed inset-y-0 right-0 z-50 w-full max-w-md overflow-y-auto border-l-[3px] border-pencil bg-paper/95 p-4 shadow-hard backdrop-blur-sm"
   >
-    <!-- Header with close button -->
-    <div class="flex items-center justify-between p-5 border-b-[3px] border-pencil/20">
-      <h2 class="text-xl font-bold truncate pr-2" style="font-family: 'Kalam', cursive; font-weight: 700;">
-        🌸 {{ plant.title }}
-      </h2>
-      <button
-        aria-label="关闭详情"
-        @click="$emit('close')"
-        class="flex-shrink-0 w-8 h-8 flex items-center justify-center border-[2px] border-pencil bg-white shadow-hard-sm hover:shadow-hard-hover hover:translate-x-[1px] hover:translate-y-[1px] active:shadow-none transition-all wobbly-sm text-lg"
-      >
-        ✕
-      </button>
-    </div>
+    <div class="relative min-h-full border-[3px] border-pencil bg-white p-5 shadow-hard-sm wobbly-md">
+      <div class="absolute -top-3 left-1/2 h-7 w-24 -translate-x-1/2 rotate-1 bg-muted/75"></div>
 
-    <!-- Body -->
-    <div class="p-5 space-y-4">
-      <!-- Source type badge -->
-      <div class="flex items-center gap-2">
-        <span class="px-3 py-0.5 text-sm border-[2px] border-pencil wobbly-sm bg-white">
-          {{ sourceTypeLabel }}
-        </span>
-        <span class="px-3 py-0.5 text-sm border-[2px] border-pencil wobbly-sm bg-white">
-          {{ modelTypeLabel }}
-        </span>
+      <header class="mb-5 flex items-start justify-between gap-4 border-b-[3px] border-dashed border-pencil/25 pb-4">
+        <div class="min-w-0">
+          <div class="mb-2 inline-flex border-[2px] border-pencil bg-sticky px-3 py-0.5 text-sm shadow-hard-sm wobbly-sm">
+            花园札记
+          </div>
+          <h2 class="truncate text-2xl font-bold" style="font-family: 'Kalam', cursive; font-weight: 700;">
+            {{ plant.title }}
+          </h2>
+          <p class="mt-1 text-sm text-pencil/55">📅 {{ displayDate }}</p>
+        </div>
+        <button
+          aria-label="关闭详情"
+          @click="$emit('close')"
+          class="flex h-9 w-9 flex-shrink-0 items-center justify-center border-[2px] border-pencil bg-white text-lg shadow-hard-sm transition-all hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-hard-hover active:shadow-none wobbly-sm"
+        >
+          ✕
+        </button>
+      </header>
+
+      <div class="mb-5 grid grid-cols-2 gap-3">
+        <div class="border-[2px] border-pencil bg-white p-3 shadow-hard-sm wobbly-sm">
+          <div class="text-xs text-pencil/55">来源</div>
+          <div class="mt-1 font-bold">{{ sourceTypeLabel }}</div>
+        </div>
+        <div class="border-[2px] border-pencil bg-white p-3 shadow-hard-sm wobbly-sm">
+          <div class="text-xs text-pencil/55">植物</div>
+          <div class="mt-1 font-bold">{{ modelTypeLabel }}</div>
+        </div>
       </div>
 
-      <!-- Date -->
-      <div class="text-sm text-pencil/60">
-        📅 {{ displayDate }}
+      <div class="mb-5 flex items-center justify-between gap-3 border-[3px] border-pencil bg-sticky p-4 shadow-hard-sm wobbly-md">
+        <div>
+          <div class="text-xs text-pencil/55">情绪分</div>
+          <div class="text-4xl font-bold" style="font-family: 'Kalam', cursive;">{{ displayMoodScore }}</div>
+        </div>
+        <div class="border-[2px] border-pencil bg-white px-4 py-2 text-xl font-bold shadow-hard-sm wobbly">
+          {{ moodStamp }}
+        </div>
       </div>
 
-      <!-- Mood score -->
-      <div class="flex items-center gap-2">
-        <span class="text-sm text-pencil/70">情绪分：</span>
-        <span class="text-lg font-bold" style="font-family: 'Kalam', cursive;">{{ displayMoodScore }}</span>
-        <span class="px-2 py-0.5 text-sm border-[2px] border-pencil wobbly-sm bg-white">
-          {{ plant.mood_label || plant.moodLabel || '' }}
-        </span>
-      </div>
+      <section class="mb-5">
+        <h3 class="mb-2 text-sm font-bold text-pencil/60" style="font-family: 'Kalam', cursive;">正文摘录</h3>
+        <div class="border-[2px] border-pencil/35 bg-paper p-4 shadow-hard-sm wobbly-sm">
+          <p class="text-base leading-relaxed text-pencil">
+            {{ truncatedContent }}
+          </p>
+        </div>
+      </section>
 
-      <!-- Content preview -->
-      <div class="bg-white/60 border-[2px] border-pencil/20 p-4 wobbly-sm">
-        <p class="text-base text-pencil leading-relaxed">
-          {{ truncatedContent }}
-        </p>
-      </div>
-
-      <!-- Growth story -->
-      <div>
-        <h3 class="text-sm font-bold text-pencil/60 mb-1" style="font-family: 'Kalam', cursive;">
-          🌱 成长说明
-        </h3>
-        <p class="text-base text-pencil/80 leading-relaxed bg-amber-50/60 border-[2px] border-amber-200/50 p-4 wobbly-sm">
+      <section class="mb-5">
+        <h3 class="mb-2 text-sm font-bold text-pencil/60" style="font-family: 'Kalam', cursive;">🌱 成长说明</h3>
+        <p class="border-[2px] border-pencil bg-white p-4 text-base leading-relaxed text-pencil/80 shadow-hard-sm wobbly-sm">
           {{ displayGrowthStory }}
         </p>
-      </div>
+      </section>
 
-      <!-- Action button -->
-      <div class="pt-2">
-        <button
-          aria-label="查看原记录"
-          @click="$emit('open-source', plant)"
-          class="w-full px-4 py-2 text-base border-[2px] border-pencil bg-white shadow-hard hover:shadow-hard-hover hover:translate-x-[1px] hover:translate-y-[1px] active:shadow-none transition-all wobbly-sm"
-        >
-          📖 查看原记录
-        </button>
-      </div>
+      <button
+        aria-label="查看原记录"
+        @click="$emit('open-source', plant)"
+        class="w-full border-[3px] border-pencil bg-white px-4 py-3 text-base shadow-hard transition-all hover:translate-x-[2px] hover:translate-y-[2px] hover:bg-accent hover:text-white hover:shadow-hard-hover active:translate-x-[4px] active:translate-y-[4px] active:shadow-none wobbly"
+      >
+        📖 查看原记录
+      </button>
     </div>
-  </div>
+  </aside>
 </template>
 
 <script setup>
@@ -97,7 +96,15 @@ const MODEL_TYPE_LABELS = {
   cactus: '仙人掌',
   duskLeaf: '暮叶',
   flower: '花叶',
-  leafBloom: '花叶'
+  leafBloom: '花团'
+}
+
+const MOOD_STAMPS = {
+  高能量: '阳光',
+  温暖: '绽放',
+  平静: '新芽',
+  沉思: '静叶',
+  坚韧: '守护'
 }
 
 const sourceTypeLabel = computed(() => {
@@ -123,6 +130,15 @@ const displayMoodScore = computed(() => {
   return score != null ? String(score) : ''
 })
 
+const displayMoodLabel = computed(() => {
+  if (!props.plant) return ''
+  return props.plant.mood_label || props.plant.moodLabel || ''
+})
+
+const moodStamp = computed(() => {
+  return MOOD_STAMPS[displayMoodLabel.value] || displayMoodLabel.value || '记忆'
+})
+
 const displayGrowthStory = computed(() => {
   if (!props.plant) return ''
   return props.plant.growthStory || props.plant.growth_story || ''
@@ -131,8 +147,8 @@ const displayGrowthStory = computed(() => {
 const truncatedContent = computed(() => {
   if (!props.plant) return ''
   const text = props.plant.contentPreview || props.plant.content || ''
-  if (text.length > 120) {
-    return text.slice(0, 120) + '...'
+  if (text.length > 140) {
+    return text.slice(0, 140) + '...'
   }
   return text
 })

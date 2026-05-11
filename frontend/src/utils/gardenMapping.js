@@ -29,10 +29,16 @@ export function moodToPlantProfile(score) {
       growthLevel: 'radiant',
       primaryColor: '#FFD700',
       secondaryColor: '#FF8C00',
+      accentColor: '#FFE88A',
       height: 2.5,
       petalCount: 16,
+      petalLayers: 3,
       petalScale: 1.2,
+      leafCount: 6,
       glowIntensity: 0.8,
+      pulseIntensity: 0.42,
+      swaySpeed: 1.25,
+      focusScale: 1.22,
       moodLabel: '高能量'
     }
   }
@@ -42,10 +48,16 @@ export function moodToPlantProfile(score) {
       growthLevel: 'bloom',
       primaryColor: '#7EC850',
       secondaryColor: '#F5DEB3',
+      accentColor: '#FF9FB6',
       height: 1.8,
       petalCount: 8,
+      petalLayers: 2,
       petalScale: 1.0,
+      leafCount: 5,
       glowIntensity: 0.5,
+      pulseIntensity: 0.3,
+      swaySpeed: 1.05,
+      focusScale: 1.18,
       moodLabel: '温暖'
     }
   }
@@ -55,10 +67,16 @@ export function moodToPlantProfile(score) {
       growthLevel: 'sprout',
       primaryColor: '#4CAF50',
       secondaryColor: '#8BC34A',
+      accentColor: '#D7F7A8',
       height: 1.2,
       petalCount: 4,
+      petalLayers: 1,
       petalScale: 0.7,
+      leafCount: 4,
       glowIntensity: 0.3,
+      pulseIntensity: 0.2,
+      swaySpeed: 0.88,
+      focusScale: 1.16,
       moodLabel: '平静'
     }
   }
@@ -68,10 +86,16 @@ export function moodToPlantProfile(score) {
       growthLevel: 'bud',
       primaryColor: '#8B6F9E',
       secondaryColor: '#6B4423',
+      accentColor: '#D9B6E8',
       height: 0.9,
       petalCount: 3,
+      petalLayers: 1,
       petalScale: 0.5,
+      leafCount: 5,
       glowIntensity: 0.2,
+      pulseIntensity: 0.16,
+      swaySpeed: 0.72,
+      focusScale: 1.14,
       moodLabel: '沉思'
     }
   }
@@ -81,10 +105,16 @@ export function moodToPlantProfile(score) {
     growthLevel: 'survivor',
     primaryColor: '#5F9EA0',
     secondaryColor: '#2F4F4F',
+    accentColor: '#C78DD7',
     height: 0.7,
     petalCount: 0,
+    petalLayers: 0,
     petalScale: 0.3,
+    leafCount: 3,
     glowIntensity: 0.1,
+    pulseIntensity: 0.12,
+    swaySpeed: 0.62,
+    focusScale: 1.12,
     moodLabel: '坚韧'
   }
 }
@@ -116,6 +146,10 @@ function jitter(seed, range = 0.4) {
   return (seededRandom(seed) - 0.5) * range
 }
 
+function pickFromSeed(seed, values) {
+  return values[Math.floor(seededRandom(seed) * values.length) % values.length]
+}
+
 /**
  * 将后端日记数据数组映射为 3D 花园植物数组
  *
@@ -129,7 +163,7 @@ export function createGardenPlants(items, options = {}) {
   if (!items || items.length === 0) return []
 
   const { plotWidth = 16, plotDepth = 10 } = options
-  const margin = 0.5
+  const margin = 2
 
   // 按创建时间从新到旧排序
   const sorted = [...items].sort((a, b) => {
@@ -173,6 +207,7 @@ export function createGardenPlants(items, options = {}) {
     const moodScore = item.mood_score ?? item.moodScore ?? 0
     const createdAt = item.created_at || item.createdAt || ''
     const profile = moodToPlantProfile(moodScore)
+    const bedType = pickFromSeed(idSeed + 999, ['round', 'ribbon', 'patch', 'stone'])
 
     return {
       id: String(item.id),
@@ -186,6 +221,10 @@ export function createGardenPlants(items, options = {}) {
       z,
       rotationY,
       ...profile,
+      bedType,
+      swaySpeed: Math.round((profile.swaySpeed + jitter(idSeed + 222, 0.18)) * 100) / 100,
+      pulseIntensity: Math.round((profile.pulseIntensity + seededRandom(idSeed + 444) * 0.08) * 100) / 100,
+      focusScale: Math.round((profile.focusScale + seededRandom(idSeed + 555) * 0.04) * 100) / 100,
       growthStory: describePlantGrowth({
         modelType: profile.modelType,
         growthLevel: profile.growthLevel,

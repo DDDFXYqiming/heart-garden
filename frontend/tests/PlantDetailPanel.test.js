@@ -95,13 +95,22 @@ describe('PlantDetailPanel', () => {
     expect(wrapper.text()).toContain('花叶')
   })
 
-  test('maps modelType leafBloom to 花叶', () => {
+  test('maps modelType leafBloom to 花团', () => {
     const wrapper = mount(PlantDetailPanel, {
       props: {
         plant: { ...basePlant, modelType: 'leafBloom' }
       }
     })
-    expect(wrapper.text()).toContain('花叶')
+    expect(wrapper.text()).toContain('花团')
+  })
+
+  test('renders the journal-style panel labels', () => {
+    const wrapper = mount(PlantDetailPanel, {
+      props: { plant: basePlant }
+    })
+    expect(wrapper.text()).toContain('花园札记')
+    expect(wrapper.text()).toContain('正文摘录')
+    expect(wrapper.text()).toContain('成长说明')
   })
 
   test('renders created_at date', () => {

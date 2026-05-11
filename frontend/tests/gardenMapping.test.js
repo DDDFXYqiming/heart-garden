@@ -164,8 +164,9 @@ describe('createGardenPlants', () => {
       'id', 'sourceType', 'title', 'content', 'contentPreview',
       'createdAt', 'moodScore', 'x', 'z', 'rotationY',
       'modelType', 'growthLevel', 'primaryColor', 'secondaryColor',
-      'height', 'petalCount', 'petalScale', 'glowIntensity',
-      'moodLabel', 'growthStory'
+      'accentColor', 'height', 'petalCount', 'petalLayers',
+      'petalScale', 'leafCount', 'glowIntensity', 'pulseIntensity',
+      'swaySpeed', 'bedType', 'focusScale', 'moodLabel', 'growthStory'
     ]
     plants.forEach(plant => {
       requiredFields.forEach(field => {
@@ -235,6 +236,29 @@ describe('createGardenPlants', () => {
     const positions = plants.map(p => `${p.x},${p.z}`)
     const uniquePositions = new Set(positions)
     expect(uniquePositions.size).toBeGreaterThan(1)
+  })
+
+  test('new visual motion fields are deterministic for the same input', () => {
+    const plants1 = createGardenPlants(sampleItems)
+    const plants2 = createGardenPlants(sampleItems)
+
+    plants1.forEach((plant, index) => {
+      expect(plant.leafCount).toBe(plants2[index].leafCount)
+      expect(plant.petalLayers).toBe(plants2[index].petalLayers)
+      expect(plant.swaySpeed).toBe(plants2[index].swaySpeed)
+      expect(plant.pulseIntensity).toBe(plants2[index].pulseIntensity)
+      expect(plant.bedType).toBe(plants2[index].bedType)
+      expect(plant.accentColor).toBe(plants2[index].accentColor)
+      expect(plant.focusScale).toBe(plants2[index].focusScale)
+    })
+  })
+
+  test('bedType is one of the supported immersive garden base types', () => {
+    const plants = createGardenPlants(sampleItems)
+    const allowed = ['round', 'ribbon', 'patch', 'stone']
+    plants.forEach(plant => {
+      expect(allowed).toContain(plant.bedType)
+    })
   })
 
   test('returns empty array for empty input', () => {

@@ -1,6 +1,6 @@
 <template>
   <div>
-    <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
+    <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
       <div>
         <p class="mb-1 text-sm text-pencil/60">把每一段记录种进会呼吸的 3D 小花园</p>
         <h1 class="text-3xl md:text-4xl" style="font-family: 'Kalam', cursive; font-weight: 700;">记忆花园</h1>
@@ -26,21 +26,32 @@
     </div>
 
     <template v-else>
-      <div class="grid gap-4 md:grid-cols-4 mb-6">
-        <div class="bg-white border-[3px] border-pencil p-4 wobbly-md shadow-hard-sm">
-          <span class="text-pencil/60">日记总数</span>
-          <div class="text-3xl font-bold" style="font-family: 'Kalam', cursive;">{{ overview.totalCount }}</div>
+      <section class="relative mb-5 overflow-hidden border-[3px] border-pencil bg-white/85 p-4 shadow-hard-sm wobbly-md">
+        <div class="tape"></div>
+        <div class="grid gap-4 md:grid-cols-[1.3fr_0.8fr_0.8fr] md:items-center">
+          <div>
+            <span class="text-sm text-pencil/60">花园概览</span>
+            <div class="mt-1 flex flex-wrap items-center gap-3">
+              <span class="text-3xl">{{ overview.statusEmoji }}</span>
+              <h2 class="text-2xl font-bold" style="font-family: 'Kalam', cursive;">{{ overview.statusText }}</h2>
+              <span class="border-[2px] border-pencil bg-sticky px-3 py-0.5 text-sm shadow-hard-sm wobbly-sm">
+                {{ overview.totalCount }} 朵记忆花
+              </span>
+            </div>
+            <p class="mt-2 text-sm text-pencil/65">颜色、高度、花型与动效由记录的情绪分和内容稳定生成。</p>
+          </div>
+          <div class="border-l-0 border-pencil/20 md:border-l-[3px] md:pl-5">
+            <div class="text-sm text-pencil/60">平均情绪分</div>
+            <div class="text-4xl font-bold" style="font-family: 'Kalam', cursive;">{{ overview.avgScore }}</div>
+          </div>
+          <div class="border-l-0 border-pencil/20 md:border-l-[3px] md:pl-5">
+            <div class="text-sm text-pencil/60">当前选中</div>
+            <div class="text-xl font-bold truncate" style="font-family: 'Kalam', cursive;">
+              {{ selectedPlant ? selectedPlant.title : '整座花园' }}
+            </div>
+          </div>
         </div>
-        <div class="bg-white border-[3px] border-pencil p-4 wobbly-md shadow-hard-sm">
-          <span class="text-pencil/60">平均情绪分</span>
-          <div class="text-3xl font-bold" style="font-family: 'Kalam', cursive;">{{ overview.avgScore }}</div>
-        </div>
-        <div class="bg-white border-[3px] border-pencil p-4 wobbly-md shadow-hard-sm md:col-span-2">
-          <span class="text-pencil/60">花园概览</span>
-          <div class="text-2xl font-bold" style="font-family: 'Kalam', cursive;">{{ overview.statusEmoji }} {{ overview.statusText }}</div>
-          <p class="mt-1 text-sm text-pencil/60">每朵花都对应一条记录，颜色、高度和花型由情绪与内容生成。</p>
-        </div>
-      </div>
+      </section>
 
       <GardenScene
         :plants="plants"
@@ -50,27 +61,32 @@
         @clear-selection="clearSelection"
       />
 
-      <div class="mt-6 border-[3px] border-pencil bg-white/80 p-5 shadow-hard-sm wobbly-md">
+      <section class="mt-5 border-[2px] border-dashed border-pencil bg-white/60 p-4 shadow-hard-sm wobbly-md">
         <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
           <h2 class="text-xl font-bold" style="font-family: 'Kalam', cursive;">🌷 记忆花朵索引</h2>
-          <span class="text-sm text-pencil/60">给键盘与低性能设备保留的文字入口</span>
+          <span class="border-[2px] border-pencil bg-paper px-3 py-0.5 text-sm wobbly-sm">最近 {{ plants.length }} 条</span>
         </div>
-        <div class="grid gap-3 md:grid-cols-2">
+        <div class="grid gap-3 md:grid-cols-3">
           <button
             v-for="plant in plants"
             :key="plant.id"
-            class="group border-[2px] border-pencil bg-white/80 p-4 text-left shadow-hard-sm transition-all hover:translate-x-[1px] hover:translate-y-[1px] hover:bg-amber-50 hover:shadow-none wobbly-sm"
+            class="group border-[2px] border-pencil bg-white/82 p-4 text-left shadow-hard-sm transition-all hover:-rotate-1 hover:translate-x-[1px] hover:translate-y-[1px] hover:bg-sticky hover:shadow-none wobbly-sm"
+            :class="selectedPlant?.id === plant.id ? 'bg-sticky -rotate-1 shadow-hard-hover' : ''"
             @click="selectPlant(plant)"
           >
-            <div class="flex items-center justify-between gap-3">
-              <h3 class="text-lg font-bold" style="font-family: 'Kalam', cursive;">{{ plant.title }}</h3>
+            <div class="flex items-start justify-between gap-3">
+              <h3 class="text-base font-bold leading-tight" style="font-family: 'Kalam', cursive;">{{ plant.title }}</h3>
               <span class="text-xl">{{ plantIcon(plant.modelType) }}</span>
             </div>
-            <p class="mt-1 line-clamp-2 text-sm text-pencil/65">{{ plant.contentPreview }}</p>
-            <div class="mt-2 text-xs text-pencil/50">{{ plant.createdAt }} · {{ plant.moodLabel }} · 情绪 {{ plant.moodScore }}</div>
+            <p class="mt-2 line-clamp-2 text-sm text-pencil/65">{{ plant.contentPreview }}</p>
+            <div class="mt-3 flex flex-wrap items-center gap-2 text-xs text-pencil/55">
+              <span>{{ plant.createdAt }}</span>
+              <span class="border-[2px] border-pencil/30 bg-paper px-2 py-0.5 wobbly-sm">{{ plant.moodLabel }}</span>
+              <span>情绪 {{ plant.moodScore }}</span>
+            </div>
           </button>
         </div>
-      </div>
+      </section>
     </template>
 
     <PlantDetailPanel
@@ -98,7 +114,7 @@ const overview = computed(() => buildGardenOverview(plants.value))
 function plantIcon(modelType) {
   const icons = {
     sunflower: '🌻',
-    leafBloom: '🌸',
+    leafBloom: '🌼',
     flower: '🌺',
     sprout: '🌱',
     duskLeaf: '🍂',
