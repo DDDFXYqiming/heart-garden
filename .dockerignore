@@ -33,3 +33,10 @@ SPEC.md
 spec.md
 *.zip
 *.tar.gz
+
+# Local agent / planning artifacts
+.trae
+.onboarded
+plan_*
+skills
+uv.lock

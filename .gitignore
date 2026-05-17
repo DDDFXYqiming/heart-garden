@@ -85,3 +85,11 @@ spec-*.md
 # Local AI planning/tool documents
 .hermes/plans/
 .trae/documents/
+
+
+# Local agent / planning artifacts
+.trae/
+.onboarded
+plan_*/
+skills/
+uv.lock
