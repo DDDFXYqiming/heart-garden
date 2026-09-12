@@ -104,11 +104,10 @@ DEV_MODE = (
 def create_app():
     app = Flask(__name__, static_folder=None)
 
-    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-here')
+    from services.runtime_secrets import resolve_flask_secret, require_jwt_secret
+    app.config['SECRET_KEY'] = resolve_flask_secret(os.getenv('SECRET_KEY'))
     app.config['DATABASE'] = os.getenv('DATABASE_PATH', 'heart_garden.db')
-    app.config['JWT_SECRET'] = os.environ.get('JWT_SECRET')
-    if not app.config['JWT_SECRET']:
-        raise ValueError("JWT_SECRET 环境变量未设置！请设置一个安全的随机字符串。")
+    app.config['JWT_SECRET'] = require_jwt_secret(os.environ.get('JWT_SECRET'))
     app.config['JWT_EXPIRATION_HOURS'] = 168
 
     CORS(app)

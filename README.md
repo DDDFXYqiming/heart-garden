@@ -146,6 +146,8 @@ npm run dev
 
 ### Configure LLM (Optional)
 
+Set `JWT_SECRET` to a private random value before starting the application. Set `SECRET_KEY` as well when Flask session signatures need to survive restarts. If `SECRET_KEY` is omitted, the app creates a random process-local value; known placeholder values are rejected. For example, `python -c "import secrets; print(secrets.token_hex(32))"` produces a value suitable for either setting. Keep actual values outside version control.
+
 1. Open http://localhost:3001/#/settings after startup.
 2. Find the **AI Chat Mode** section.
 3. Enable **Use LLM Chat**.
