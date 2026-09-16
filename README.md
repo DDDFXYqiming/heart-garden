@@ -1,322 +1,82 @@
 # Heart Garden
 
-## Project Overview
+Heart Garden is a local-first diary and mood companion. It stores diary entries and mood history in SQLite, offers a rule-based chat mode without an external model, and can use an OpenAI-compatible LLM when the user enables it. When an LLM call fails, the chat service falls back to the rule engine.
 
-Heart Garden is an AI-driven emotional companion application that provides deep understanding, mood tracking, and intelligent companionship.  
-The system is designed for local deployment to protect user privacy and data security.
+## Features
 
-## Technical Architecture
+- User registration, login, JWT authentication, and per-user data isolation.
+- Diary entry create, read, update, and delete operations.
+- Mood analysis with scores, tags, trend views, and a rule-lexicon fallback.
+- Hybrid chat with rule and LLM modes, multi-turn context, and a response-source label in the UI.
+- Settings for the LLM endpoint, model, temperature, connection testing, and masked API-key storage.
+- Mood history, distribution statistics, and trend visualizations.
+- Reminder rules for low mood, daily care, and weekly reports, with a notification history and a do-not-disturb window.
 
-### Frontend Stack
+## Architecture
 
-- **Framework**: Vue 3 (Composition API + `<script setup>`)
-- **Build Tool**: Vite 6
-- **Routing**: Vue Router 4
-- **State Management**: Pinia
-- **HTTP Client**: Axios
-- **Styling**: Tailwind CSS 3
-- **Design Style**: Hand-drawn UI style
+| Area | Main files | Responsibility |
+|---|---|---|
+| Frontend | `frontend/` | Vue 3 SPA, Vue Router, Pinia, Axios, and Tailwind CSS with the hand-drawn UI. |
+| Application factory | `app/__init__.py` | Flask app creation, extension setup, request IDs, and logging. |
+| Routes and storage | `app/`, `services/db.py` | Authentication, diaries, chat, mood, reminders, analytics, and SQLite access. |
+| Mood analysis | `services/mood_analyzer.py` | Keyword rules, semantic mood parsing, scores, and trend data. |
+| Chat | `services/ai_companion.py`, `services/llm_service.py` | Conversation context, provider selection, streaming responses, and rule fallback. |
+| Prompt and provider layer | `services/prompt_engine.py`, `services/openai_compatible.py` | Prompt construction and OpenAI-compatible provider calls. |
+| Shared data | `services/constants.py` | Prompt fragments, emoji mappings, and mood keywords. |
 
-### Backend Stack
+The backend uses Flask 3, `flask-cors`, SQLite, `python-dotenv`, PyJWT, and `flask-limiter`. The frontend uses Vue 3, Vite 6, Vue Router 4, Pinia, Axios, and Tailwind CSS.
 
-- **Web Framework**: Flask 3.0.0
-- **CORS**: flask-cors 4.0.0
-- **Database**: SQLite
-- **Config Management**: python-dotenv 1.0.0
-- **JWT Auth**: PyJWT 2.8.0
-- **Rate Limiting**: flask-limiter 3.10.1
-- **LLM Integration**: OpenAI SDK (compatible mode)
+## Quick start
 
-### Service Modules
+Requirements are Python 3.9 or newer, Node.js 18 or newer, and SQLite 3.8 or newer.
 
-1. **Mood Analysis Service** (`mood_analyzer.py`)
-   - Text sentiment detection, keyword extraction, mood trend analysis, and rule-based fallback lexicon.
-
-2. **AI Companion Service** (`ai_companion.py`)
-   - Context-aware conversation, multi-turn memory, and personalized response generation.
-
-3. **LLM Service** (`llm_service.py`)
-   - Hybrid routing: automatically chooses rule engine or LLM.
-   - User-config driven: loads user LLM settings from the database.
-   - LLM-first mood judgment when companion mode is enabled.
-   - Automatic downgrade to rule engine if LLM calls fail.
-
-4. **LLM Interface Layer** (`openai_compatible.py`)
-   - OpenAI-compatible API adapter for any compatible provider.
-   - Interface abstraction in `llm_interface.py` for easy model switching.
-
-5. **Prompt Engine** (`prompt_engine.py`)
-   - Converts rule-engine logic into LLM system prompts.
-   - Supports personalized settings and emotional context injection.
-
-6. **Shared Constants** (`constants.py`)
-   - Prompt templates, emoji mappings, and mood keywords.
-
-7. **Logging System** (`app/__init__.py` + service logs)
-   - Dual-channel output (stdout/file), request ID, request latency, and LLM call/downgrade tracking.
-
-## Core Features
-
-### 1. User System
-
-- User registration/login (JWT authentication)
-- User-level data isolation
-- User profile retrieval
-
-### 2. Diary Records
-
-- Create/read/update/delete diary entries
-- Automatic timestamp management
-
-### 3. Mood Analysis
-
-- Multi-dimensional mood scoring (0-100)
-- LLM semantic mood judgment first in LLM companion mode
-- Mood tagging and trend analysis
-- Rule lexicon fallback when LLM is not configured or fails
-
-### 4. Intelligent Chat (Hybrid Mode)
-
-- **Rule Engine Mode** (default): works out of the box
-- **LLM Mode** (optional): enable after API key configuration
-- **Automatic Downgrade**: falls back to rule engine on LLM failure
-- In LLM mode, mood judgment is LLM-first with rule-based backup
-- Context awareness and multi-turn memory
-- Response source indicator in chat UI (AI / Rule)
-
-### 5. Settings and Configuration
-
-- AI chat mode switching (Rule / LLM)
-- LLM configuration management (URL, API key, model, temperature)
-- Secure API key masking (no leakage and no overwrite when reopening settings)
-- Connection test feature
-- Custom mood lexicon entry is temporarily disabled
-
-### 6. Data Tracking and Analytics
-
-- Mood history and trend visualization
-- Analytics APIs
-- Mood distribution statistics
-- Companion chat mood events included in trend and distribution metrics
-
-### 7. Smart Reminders
-
-- Mood alerts: auto-detect low mood states and trigger caring messages
-- Reminder settings: configurable type, threshold, and do-not-disturb window
-- Notification center: history with read/unread status
-- Scheduled task: background check and notification every hour
-- Personalized care messages based on current user mood
-
-## Quick Start
-
-### Requirements
-
-- Python 3.9+
-- Node.js 18+
-- SQLite 3.8+
-
-### One-click Start (Windows)
+On Windows, double-click `start.bat`. To start the services manually:
 
 ```bash
-# Double click to run
-start.bat
-```
-
-### Manual Start
-
-```bash
-# Clone project
 git clone https://github.com/DDDFXYqiming/heart-garden.git
 cd heart-garden
 
-# Backend
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+# Windows PowerShell
+venv\Scripts\Activate.ps1
+# macOS or Linux
+# source venv/bin/activate
 pip install -r requirements.txt
 python -m app.main
 
-# Frontend (new terminal)
+# in a second terminal
 cd frontend
 npm install
 npm run dev
 ```
 
-- Backend: http://localhost:5000
-- Frontend: http://localhost:3001
+The default development addresses are `http://localhost:5000` for the backend and `http://localhost:3001` for the frontend.
 
-### Configure LLM (Optional)
+## Enable LLM chat
 
-Set `JWT_SECRET` to a private random value before starting the application. Set `SECRET_KEY` as well when Flask session signatures need to survive restarts. If `SECRET_KEY` is omitted, the app creates a random process-local value; known placeholder values are rejected. For example, `python -c "import secrets; print(secrets.token_hex(32))"` produces a value suitable for either setting. Keep actual values outside version control.
+The rule engine is the default. To enable the optional provider:
 
-1. Open http://localhost:3001/#/settings after startup.
-2. Find the **AI Chat Mode** section.
-3. Enable **Use LLM Chat**.
-4. Enter API base URL (for example, `https://api.deepseek.com/v1`) and API key.
-5. Click **Test Connection**.
-6. Click **Save Configuration**.
+1. Set a private random `JWT_SECRET` before starting the backend.
+2. Set `SECRET_KEY` when Flask session signatures must survive restarts. If it is omitted, the app uses a process-local random value.
+3. Open `http://localhost:3001/#/settings`.
+4. Turn on **Use LLM Chat**, enter an OpenAI-compatible base URL, model, and API key, then run **Test Connection** and **Save Configuration**.
 
-## Project Status
+The settings API never returns the real API key. It keeps an existing key when a masked or empty value is submitted. Keep secrets outside version control and use environment variables or the settings page rather than committing them.
 
-### v1.0 - MVP Foundation
+## Current implementation
 
-- Basic diary CRUD
-- Mood analysis engine
-- AI chat interface
-- Local data storage
+- The Flask application uses a factory and separate route and service modules.
+- Chat supports normal and SSE streaming responses.
+- LLM mood results are preferred when available; rule analysis remains the fallback path.
+- Authentication endpoints are rate-limited and production errors are less verbose than development errors.
+- Reminder checks run in the background and record notification history.
+- The frontend contains diary, chat, mood, statistics, memory-garden, settings, reminder, and notification views.
 
-### v2.0 - Feature Enhancement
+See [SPEC.md](./SPEC.md) for the API summary and project-specific behavior. Run the backend and frontend test commands in their respective package files before deploying.
 
-- User system: registration/login, JWT auth, data isolation
-- Multi-turn conversation: context awareness and history
-- Analytics: summary metrics and mood distribution
-- Custom lexicon: user-extendable mood keywords
+## Development notes
 
-### v2.1 - Frontend Application
-
-- Vue 3 frontend with hand-drawn UI and full frontend/backend separation (SPA)
-- Eight pages: home, login/register, diary, AI chat, mood trend, stats dashboard, memory garden, settings
-
-### v2.2 - LLM Hybrid Mode (Core Feature)
-
-- Hybrid architecture: rule engine and LLM dual path
-- Web settings UI for LLM configuration
-- OpenAI-compatible interface for DeepSeek, OpenAI, and other compatible APIs
-- Automatic downgrade strategy on LLM failure
-- Prompt engineering: converts rule logic into LLM system prompts
-- Persistent user config in database
-- One-click connection test
-- Chat source labels (AI / Rule)
-
-### v2.3 - Security Fixes
-
-- `DEV_MODE` switched to environment-variable control; auth bypass disabled by default
-- `JWT_SECRET` fallback hardcoding removed; configuration required at startup
-- Detailed errors returned only in development mode; hidden in production
-- SQL table-name migration with allowlist validation
-
-### v2.4 - Code Refactor
-
-- Rate limits added to auth endpoints (register/login: 5 requests per IP per minute)
-- Extracted `_analyze_with_custom_words()` helper to remove four duplicated blocks
-- Created `services/constants.py` shared constants for templates and emoji dictionaries
-- Removed 20+ redundant try/except blocks (global error handler already covers them)
-- Removed unused `chart.js` + `vue-chartjs` dependencies (~150KB)
-
-### v2.5 - Fixes and Performance Optimization
-
-- Fixed conversation history loss after page refresh/navigation
-- Fixed N+1 query issue: `conversations` now uses `LEFT JOIN`
-- Merged stats SQL from seven queries to three
-- Added `GET /api/diaries/:id` endpoint
-- Frontend LLM timeout increased from 15s to 60s
-- Single-pass keyword matching in `mood_analyzer`
-
-### v2.6 - SSE Streaming Response
-
-- Added `/api/chat/stream` POST endpoint with SSE event stream
-- `LLMService.chat_stream` now streams token-by-token output
-- `ChatPage` uses `fetch` + `ReadableStream` for typing effect
-
-### v2.7 - Test Coverage
-
-- `mood_analyzer` unit tests (11 cases)
-- `prompt_engine` unit tests (6 cases)
-- API integration tests (16 cases: auth/diary/stats/mood/conversation)
-
-### v2.8 - Code Cleanup
-
-- LLM provider cache switched to OrderedDict LRU, max 10 providers
-- Routine operation logs changed from info to debug
-
-### v3.0 - Architecture Refactor
-
-- `main.py` simplified from 1468 lines to a 27-line entry
-- Flask factory pattern (`create_app`)
-- Modular split: `db.py`, `auth.py`, and 9 route modules
-
-### v3.0.1 - Startup Hotfix
-
-- Fixed startup crash caused by missing app context for `init_db()` after factory refactor
-
-### v3.0.2 - Logging System Upgrade
-
-- `setup_logging` now includes stdout StreamHandler for runtime logs in Zeabur/Docker
-- Each request gets `X-Request-ID`; logs method, path, status, latency, and user ID
-- LLM config checks, call results, stream responses, and downgrade reasons are all logged
-- Added logging regression tests for idempotency, request IDs, and SSE stream context
-
-### v3.0.3 - Frontend Streaming Call Fix
-
-- Fixed runtime `ReferenceError` caused by missing `chatStream` import in `ChatPage`
-- Added HTTP status and `ReadableStream` body validation in `chatStream`
-- Added frontend contract regression tests to prevent missing-stream import regressions
-
-### v3.0.4 - Settings API Key Retention Fix
-
-- Settings page no longer binds masked API key to submit payload fields
-- When saving LLM config, empty/masked `api_key` keeps the stored database key
-- Test connection reuses stored key when no new key is entered
-- LLM config GET/POST never returns real API key, only saved-state and masked preview
-- Added LLM config regression tests and settings-page frontend contract tests
-
-### v3.0.5 - Mood and Metrics Fixes
-
-- In LLM companion mode, mood judgment prioritizes structured LLM output, then falls back to rules
-- User mood from normal/streaming chat is now written to `mood_records` for trend/distribution stats
-- Custom mood lexicon entry is temporarily disabled (frontend hidden, backend write endpoint returns 403)
-- Expanded rule lexicon to cover more natural positive expressions
-- Added regression tests for LLM mood parsing, chat stats persistence, lexicon disablement, and frontend contracts
-
-### v3.0.6 - Streaming UTF-8 Fix
-
-- Fixed trailing multi-byte truncation/garbling in SSE streams
-- Added multibyte integrity checks in `llm_service.py chat_stream()`
-- Added UTF-8 stream integrity regression tests
-- Added 15-second keepalive heartbeat to prevent Vite proxy/Nginx timeout
-- Added `ensure_ascii=False` in `json.dumps` to preserve original non-ASCII text
-
-### v3.0.7 - LLM Security Hardening
-
-- Input sanitization (`sanitize_input`): control-character removal, injection pattern filtering, overlong-input truncation
-- Prompt hardening (`harden_system_prompt`): explicit safety boundaries against instruction override
-- User-message isolation (`wrap_user_message`): bounded markers around user content
-- Output sanitization (`sanitize_output`): remove leaked system prompt text and truncate overlong output
-- Injection detection (`detect_injection`): common prompt-injection pattern detection
-- Integrated protections into `PromptBuilder` and `LLMService`
-- Added 13 regression tests for input sanitization, prompt hardening, output filtering, and injection detection
-
-### v3.1 - Frontend Component Refactor
-
-- Added four shared components: `ChatBubble`, `DiaryCard`, `MoodBar`, `StatCard`
-- Refactored five pages to use shared components: `ChatPage`, `DiaryList`, `GardenPage`, `MoodTrend`, `StatsPage`
-- Unified component exports via `components/index.js`
-- Unit tests: all 17 tests passing
-
-### v3.2 - Smart Reminder System
-
-- Reminder settings: mood alerts, daily care reminders, weekly report reminders (enable/disable, thresholds, do-not-disturb)
-- Notification center: reminder history, read/unread management, one-click mark-all-read
-- Mood alert trigger: average of latest 3 mood records < 40
-- Scheduled checks: background task runs hourly
-- Frontend pages: reminder settings and notification center
-
-## API
-
-See the API summary section in [SPEC.md](./SPEC.md).
-
-## Development Guidelines
-
-### Code Style
-
-- Follow PEP 8
-- Use `snake_case` for function names
-- Use `PascalCase` for class names
-
-### Error Handling
-
-- Unified API response format
-- Exception capture with logging
-- User-friendly error messages
+Use `snake_case` for Python functions and `PascalCase` for Python classes. Keep database writes behind the service layer and preserve the rule fallback when changing the LLM path. New API errors should use the existing response format and logger.
 
 ## License
 
