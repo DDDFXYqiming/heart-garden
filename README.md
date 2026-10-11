@@ -21,21 +21,33 @@
 
 ---
 
-## 架构与项目结构
-
-```text
-heart-garden/
-├── app/                  # Flask 后端服务
-│   ├── main.py           # 后端入口与路由注册
-│   ├── models/           # SQLite 数据库模型（用户、日记、情绪、配置）
-│   ├── services/         # 混合对话调度、情绪分析引擎、提醒服务
-│   └── utils/            # JWT 鉴权与安全校验
-├── frontend/             # 前端单页面应用（React + Vite）
-│   ├── src/              # 页面（日记书写、情绪看板、伴侣对话、设置）
-│   └── package.json
-├── requirements.txt      # Python 依赖清单
-└── start.bat             # Windows 一键启动脚本
+```mermaid
+flowchart TD
+    subgraph Frontend["前端应用 (React + Vite)"]
+        UI["日记书写 · 情绪看板 · 伴侣对话 · 偏好设置"]
+    end
+    subgraph Backend["后端服务 (Flask API)"]
+        Router["路由入口与分发 (main.py)"]
+        Auth["JWT 鉴权中心 (utils/)"]
+        subgraph Services["混合调度与情绪引擎 (services/)"]
+            RuleEngine["本地离线规则关怀引擎"]
+            LLMEngine["OpenAI 兼容 LLM 深度共情模式"]
+            EmotionCalc["文本情绪评分与周期趋势聚合"]
+        end
+        DB[(SQLite 本地数据库 models/)]
+    end
+    UI <-->|RESTful API + JWT| Router
+    Router --> Auth --> Services
+    Services <--> DB
 ```
+
+* **`app/`**：Flask 后端核心
+  * `main.py`：后端入口与路由挂载
+  * `models/`：SQLite 数据库模型（用户、日记、情绪量化、系统配置）
+  * `services/`：双模对话调度器、情绪分析引擎与关怀提醒服务
+  * `utils/`：JWT 鉴权与安全校验
+* **`frontend/`**：React + Vite 响应式单页面应用
+* **`start.bat`**：Windows 一键启动前后端脚本
 
 ---
 

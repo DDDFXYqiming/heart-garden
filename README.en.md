@@ -21,21 +21,33 @@
 
 ---
 
-## Project Structure
-
-```text
-heart-garden/
-├── app/                  # Flask backend API
-│   ├── main.py           # Application entrypoint & route registration
-│   ├── models/           # SQLite schemas (User, Diary, Mood, Settings)
-│   ├── services/         # Hybrid chat scheduler, sentiment analyzer, reminders
-│   └── utils/            # JWT authentication and security helpers
-├── frontend/             # Single-page web application (React + Vite)
-│   ├── src/              # Views (Journaling, Mood Dashboard, Companion Chat, Settings)
-│   └── package.json
-├── requirements.txt      # Python backend dependencies
-└── start.bat             # Windows one-click launcher
+```mermaid
+flowchart TD
+    subgraph Frontend["Frontend SPA (React + Vite)"]
+        UI["Journaling · Mood Dashboard · Companion Chat · Preferences"]
+    end
+    subgraph Backend["Backend API (Flask)"]
+        Router["Entrypoint & Routing (main.py)"]
+        Auth["JWT Security & Auth (utils/)"]
+        subgraph Services["Engines & Schedulers (services/)"]
+            RuleEngine["Offline Psychological Care Rule Engine"]
+            LLMEngine["OpenAI-Compatible LLM Empathy Mode"]
+            EmotionCalc["Sentiment Scoring & Trend Analytics"]
+        end
+        DB[(SQLite Embedded DB models/)]
+    end
+    UI <-->|RESTful API + JWT| Router
+    Router --> Auth --> Services
+    Services <--> DB
 ```
+
+* **`app/`**: Flask backend service
+  * `main.py`: Entrypoint and route handlers
+  * `models/`: SQLite schemas (User, Diary, Sentiment, Settings)
+  * `services/`: Hybrid chat router, sentiment analysis engine, notifications
+  * `utils/`: JWT authentication and security filters
+* **`frontend/`**: Responsive React + Vite application
+* **`start.bat`**: Windows all-in-one background launcher
 
 ---
 
